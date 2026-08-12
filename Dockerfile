@@ -1,21 +1,20 @@
-# 鹊动系统 · 含 AI 能力的后端 + 前端镜像
+# 鹊动智能FAC功能评估与干预系统 · 后端 + 前端 Docker 镜像
 FROM node:22-bookworm
 
 # node:sqlite 在 Node 22 仍为实验特性，用 --experimental-sqlite 启动
 ENV NODE_OPTIONS=--experimental-sqlite
 WORKDIR /app
 
-# 先装后端依赖（利用层缓存）
-COPY server/package.json server/package-lock.json ./server/
-RUN cd server && npm install --omit=dev
+# 安装根目录依赖（express / multer）
+COPY package.json ./
+RUN npm install --omit=dev
 
-# 复制后端与前端构建产物
+# 复制后端与前端静态产物
 COPY server/ ./server/
 COPY _dl3/ ./_dl3/
 
-# 运行时数据/媒体目录（建议挂卷持久化）
+# 运行时数据/媒体目录（ Railway 请在控制台挂 Volumes，勿在 Dockerfile 声明 VOLUME ）
 RUN mkdir -p /app/server/data /app/server/media /app/server/backups
-VOLUME ["/app/server/data", "/app/server/media", "/app/server/backups"]
 
 EXPOSE 8080
 # server.js 从 ../_dl3 读取静态目录（容器内即 ./_dl3）
