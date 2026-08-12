@@ -16,9 +16,9 @@ const { DatabaseSync } = require('node:sqlite');
 const { runBackup, human } = require('./lib-backup.js');
 
 const ROOT = __dirname;
-const DATA_DIR = path.join(ROOT, 'data');
-const MEDIA_DIR = path.join(ROOT, 'media');
-const BACKUP_DIR = path.join(ROOT, 'backups');
+const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(ROOT, 'data');
+const MEDIA_DIR = process.env.MEDIA_DIR ? path.resolve(process.env.MEDIA_DIR) : path.join(DATA_DIR, 'media');
+const BACKUP_DIR = process.env.BACKUP_DIR ? path.resolve(process.env.BACKUP_DIR) : path.join(DATA_DIR, 'backups');
 const DB_FILE = path.join(DATA_DIR, 'app.db');
 const LOG_FILE = path.join(BACKUP_DIR, 'backup.log');
 

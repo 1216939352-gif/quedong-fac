@@ -11,9 +11,9 @@ const path = require('path');
 const fs = require('fs');
 
 const SRV = path.resolve(__dirname, '..');
-const DATA_DIR = path.join(SRV, 'data');
-const MEDIA_DIR = path.join(SRV, 'media');
-const BACKUP_DIR = path.join(SRV, 'backups');
+const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(SRV, 'data');
+const MEDIA_DIR = process.env.MEDIA_DIR ? path.resolve(process.env.MEDIA_DIR) : path.join(DATA_DIR, 'media');
+const BACKUP_DIR = process.env.BACKUP_DIR ? path.resolve(process.env.BACKUP_DIR) : path.join(DATA_DIR, 'backups');
 const PORT = process.env.APP_PORT || process.env.PORT || '8080';
 const OUT = process.argv[2];
 

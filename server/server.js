@@ -45,9 +45,9 @@ const logger = require('./lib/logger');
 const PORT = parseInt(process.env.PORT || '8080', 10);
 const ROOT = __dirname;
 const STATIC_DIR = process.env.STATIC_DIR || path.join(ROOT, '..', '_dl3');
-const DATA_DIR = path.join(ROOT, 'data');
-const MEDIA_DIR = path.join(ROOT, 'media');
-const BACKUP_DIR = path.join(ROOT, 'backups');
+const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(ROOT, 'data');
+const MEDIA_DIR = process.env.MEDIA_DIR ? path.resolve(process.env.MEDIA_DIR) : path.join(DATA_DIR, 'media');
+const BACKUP_DIR = process.env.BACKUP_DIR ? path.resolve(process.env.BACKUP_DIR) : path.join(DATA_DIR, 'backups');
 [DATA_DIR, MEDIA_DIR, BACKUP_DIR].forEach(d => fs.mkdirSync(d, { recursive: true }));
 
 // 持久化签名密钥（首次运行生成，重启后保持一致，令牌才不会失效）

@@ -37,7 +37,7 @@ git push -u origin main
    - 可选 AI 模型（不填则 AI 功能降级为规则引擎）：
      `AI_HY3_ENABLED=true`、`AI_HY3_BASE_URL=https://tokenhub.tencentmaas.com/v1`、`AI_HY3_API_KEY=你的Key`、`AI_HY3_MODEL=hy3`、`AI_HY3_LABEL=HY3`
 4. **持久化数据（重要）**：项目页 → **Volumes** → Add Volume，Mount Path 填 `/app/server/data`，Size `1` GB。
-   这样 SQLite 数据库和上传媒体不随重启/重新部署丢失。（1GB 卷约 $0.10/月，远低于 Railway 免费额度）
+   系统已将数据库、上传媒体、自动备份统一放到 `data/` 子目录下（`data/app.db`、`data/media`、`data/backups`），因此只需挂 **一个 Volume** 即可，满足 Railway Free 套餐「每个项目 1 个 Volume」的限制。数据库和媒体文件都不会随重启/重新部署丢失。（1GB 卷约 $0.10/月，远低于 Railway 免费额度）
 5. 部署完成后，Railway 会分配一个 `xxx.up.railway.app` 公网域名，直接访问即可。
 
 ---
