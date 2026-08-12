@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>人体成分 OCR 测试</title>
+<style>
+body { font-family: system-ui, sans-serif; padding: 20px; }
+#out { white-space: pre-wrap; background: #f4f4f4; padding: 12px; border-radius: 8px; margin-top: 12px; }
+</style>
+</head>
+<body>
+<h2>人体成分 OCR 测试</h2>
+<input type="file" id="f" accept="image/*,application/pdf">
+<button id="b">识别当前报告图</button>
+<div id="status"></div>
+<img id="preview" style="max-width:600px;border:1px solid #ccc;margin-top:12px;">
+<div id="out"></div>
+<script src="lib/tesseract/tesseract.min.js"></script>
+<script>
+const img = document.getElementById('preview');
+img.src = '../_tmp_pdf_pages/page_0.png';
+
+async function runOCR(file) {
+  const s = document.getElementById('status');
+  s.textContent = '加载 OCR 引擎...';
+  const worker = await Tesseract.createWorker('chi_sim+eng', 1, {
+    workerPath: 'lib/tesseract/worker.min.js',
+    corePath: 'lib/tesseract/',
+    langPath: 'lib/tessdata',
+    logger: m => { s.textContent = (m.status || '') + ' ' + Math.round((m.progress||0)*100) + '%'; }
+  });
+  try {
+    s.textContent = '识别中...';
+    let canvas;
+    if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+      const lib = await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'lib/pdf.min.js';
+        s.onload = () => resolve(window.pdfjsLib);
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+      const buf = await file.arrayBuffer();
+      const pdf = await lib.getDocument({ data: new Uint8Array(buf) }).promise;
+      const page = await pdf.getPage(1);
+      const vp = page.getViewport({ scale: 2.5 });
+      canvas = document.createElement('canvas');
+      canvas.width = Math.ceil(vp.width); canvas.height = Math.ceil(vp.height);
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    } else {
+      const url = URL.createObjectURL(file);
+      const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+      canvas = document.createElement('canvas');
+      canvas.width = im.naturalWidth; canvas.height = im.naturalHeight;
+      canvas.getContext('2d').drawImage(im, 0, 0);
+      URL.revokeObjectURL(url);
+    }
+    document.getElementById('preview').src = canvas.toDataURL();
+    const psms = ['6','11','4'];
+    const results = [];
+    for (const psm of psms) {
+      await worker.setParameters({ tessedit_pageseg_mode: psm });
+      const { data } = await worker.recognize(canvas);
+      results.push({ psm, text: data.text });
+    }
+    await worker.setParameters({ tessedit_pageseg_mode: '1' });
+    document.getElementById('out').textContent = results.map(r => `=== PSM ${r.psm} ===\n${r.text}`).join('\n\n');
+  } finally {
+    await worker.terminate();
+    s.textContent = '完成';
+  }
+}
+
+document.getElementById('f').onchange = () => {
+  const file = document.getElementById('f').files[0];
+  if (file) runOCR(file);
+};
+document.getElementById('b').onclick = () => {
+  fetch('../_tmp_pdf_pages/page_0.png').then(r => r.blob()).then(b => runOCR(new File([b], 'page_0.png', { type: 'image/png' })));
+};
+</script>
+</body>
+</html>

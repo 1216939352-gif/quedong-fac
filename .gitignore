@@ -1,0 +1,65 @@
+# ── 依赖 ──
+node_modules/
+server/node_modules/
+
+# ── 运行时生成（数据库/媒体/备份，勿入仓库）──
+server/data/
+server/media/
+server/backups/
+data/
+media/
+backups/
+*.db
+*.sqlite
+*.sqlite3
+
+# ── 密钥/环境（含 AI Key，绝对不能提交）──
+.env
+.env.*
+!.env.example
+
+# ── 本地预览/同步脚本（非部署必需）──
+_local_server.js
+_sync_*.py
+_sync_*.js
+*.log
+
+# ── 备份快照（大目录，保留本地即可）──
+_backup_*/
+_dl3_modules_bak/
+_deploy*/
+
+# ── 系统/编辑器 ──
+.DS_Store
+Thumbs.db
+.workbuddy/
+
+# ── Python 临时脚本 ──
+*.pyc
+__pycache__/
+
+# ── OCR 训练数据：仅保留 _dl3/lib 运行时副本，排除根目录开发副本 ──
+/chi_sim.traineddata
+/eng.traineddata
+
+# ── 临时/工作产物（非部署必需，保留本地即可）──
+_ctx_big.json
+_plan_big.json
+_acc_srv.log
+_local_srv.log
+err.txt
+_t_repair2.js
+overview.md
+overview_aimode.md
+overview_aimode_abc.md
+overview_e2e_ai.md
+overview-errlog.md
+AI_REPORT_EXPORT_OVERVIEW.md
+AI_TRIO_VERIFICATION.md
+AI_FREE_TRIAL.md
+AI升级实现路径_v1.md
+P3_Overview.md
+optimization-L0-L2-batch.md
+FIX_sarcopenia_online.md
+云端部署与患者扫码方案.md
+云服务器部署操作手册.md

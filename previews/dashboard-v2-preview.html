@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>鹊动 · 工作台首页 V2 预览</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --panel: rgba(17, 22, 38, 0.78);
+      --panel-solid: #111626;
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #e8ecf4;
+      --text-muted: #8b95a8;
+      --primary: #22c55e;
+      --primary-glow: rgba(34, 197, 94, 0.35);
+      --accent-blue: #3b82f6;
+      --accent-orange: #f59e0b;
+      --accent-purple: #8b5cf6;
+      --accent-red: #ef4444;
+      --radius: 18px;
+      --shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 220px 1fr 360px;
+      height: 100vh;
+    }
+
+    /* 左侧导航 */
+    .sidebar {
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      backdrop-filter: blur(20px);
+      display: flex;
+      flex-direction: column;
+      padding: 22px 16px;
+    }
+    .brand {
+      display: flex; align-items: center; gap: 10px;
+      font-weight: 700; font-size: 16px; margin-bottom: 28px;
+    }
+    .brand-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--primary); box-shadow: 0 0 12px var(--primary-glow);
+    }
+    .nav-group { margin-bottom: 22px; }
+    .nav-title {
+      font-size: 11px; color: var(--text-muted); text-transform: uppercase;
+      letter-spacing: 0.6px; margin-bottom: 10px; padding-left: 10px;
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; border-radius: 10px;
+      color: var(--text-muted); font-size: 13px; cursor: pointer;
+      transition: 0.2s; margin-bottom: 2px;
+    }
+    .nav-item:hover, .nav-item.active {
+      background: rgba(255,255,255,0.06); color: var(--text);
+    }
+    .nav-item.active { box-shadow: inset 0 0 0 1px var(--border); }
+    .nav-icon { width: 18px; text-align: center; }
+
+    .user {
+      margin-top: auto;
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px; border-radius: 12px;
+      background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+    }
+    .user-avatar {
+      width: 34px; height: 34px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary), #16a34a);
+      display: grid; place-items: center; font-size: 13px; font-weight: 700;
+    }
+    .user-info { line-height: 1.3; }
+    .user-name { font-size: 13px; font-weight: 600; }
+    .user-role { font-size: 11px; color: var(--text-muted); }
+
+    /* 主内容区 */
+    .main {
+      display: flex; flex-direction: column;
+      padding: 24px 28px; gap: 20px;
+      overflow-y: auto;
+      background:
+        radial-gradient(60% 40% at 20% 10%, rgba(34,197,94,0.12), transparent 60%),
+        radial-gradient(50% 50% at 90% 80%, rgba(59,130,246,0.10), transparent 55%);
+    }
+
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .page-title h1 { margin: 0; font-size: 22px; font-weight: 700; }
+    .page-title p { margin: 4px 0 0; font-size: 12px; color: var(--text-muted); }
+    .top-actions {
+      display: flex; align-items: center; gap: 12px;
+    }
+    .search {
+      width: 280px; padding: 10px 16px; border-radius: 12px;
+      background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+      color: var(--text); font-size: 13px; outline: none;
+    }
+    .search::placeholder { color: var(--text-muted); }
+    .btn {
+      padding: 9px 16px; border-radius: 10px; border: none;
+      background: rgba(255,255,255,0.08); color: var(--text);
+      font-size: 13px; cursor: pointer; transition: 0.2s;
+      border: 1px solid var(--border);
+    }
+    .btn:hover { background: rgba(255,255,255,0.14); }
+    .btn-primary { background: var(--primary); color: #052e16; font-weight: 600; border-color: transparent; }
+    .btn-primary:hover { background: #4ade80; }
+
+    /* 统计卡片 */
+    .stats {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+    }
+    .stat-card {
+      position: relative;
+      padding: 18px; border-radius: var(--radius);
+      background: var(--panel); border: 1px solid var(--border);
+      box-shadow: var(--shadow); overflow: hidden;
+    }
+    .stat-card::before {
+      content: "";
+      position: absolute; inset: 0;
+      background: radial-gradient(circle at 80% 20%, var(--glow), transparent 70%);
+      opacity: 0.35;
+    }
+    .stat-card:nth-child(1) { --glow: rgba(34,197,94,0.55); }
+    .stat-card:nth-child(2) { --glow: rgba(59,130,246,0.55); }
+    .stat-card:nth-child(3) { --glow: rgba(139,92,246,0.55); }
+    .stat-card:nth-child(4) { --glow: rgba(245,158,11,0.55); }
+    .stat-label { position: relative; font-size: 11px; color: var(--text-muted); letter-spacing: 0.5px; }
+    .stat-value { position: relative; font-size: 32px; font-weight: 800; margin: 8px 0 4px; }
+    .stat-desc { position: relative; font-size: 12px; color: var(--text-muted); }
+
+    /* 3D 轮播舞台 */
+    .stage-wrap {
+      flex: 1; min-height: 420px;
+      display: flex; flex-direction: column;
+    }
+    .stage-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .stage-title { font-size: 16px; font-weight: 700; }
+    .stage-sub { font-size: 12px; color: var(--text-muted); margin-left: 8px; }
+    .stage-controls { display: flex; gap: 8px; }
+
+    .carousel-stage {
+      flex: 1;
+      display: grid; place-items: center;
+      perspective: 1300px;
+      position: relative;
+      border-radius: var(--radius);
+      background: radial-gradient(ellipse at center, rgba(255,255,255,0.04), transparent 70%);
+      border: 1px dashed var(--border);
+    }
+
+    .carousel {
+      position: relative;
+      width: 260px; height: 340px;
+      transform-style: preserve-3d;
+      transition: transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .card {
+      position: absolute;
+      width: 260px; height: 340px;
+      left: 0; top: 0;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.10);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 16px 40px rgba(0,0,0,0.25);
+      padding: 22px;
+      cursor: pointer;
+      transform: rotateY(calc(var(--i) * 51.4deg)) translateZ(380px);
+      transition: background 0.3s, border-color 0.3s, box-shadow 0.3s;
+      display: flex; flex-direction: column;
+      user-select: none;
+    }
+    .card:hover { border-color: rgba(255,255,255,0.25); }
+    .card.active {
+      background: rgba(34, 197, 94, 0.12);
+      border-color: var(--primary);
+      box-shadow: 0 20px 60px rgba(34,197,94,0.22), inset 0 0 0 1px rgba(34,197,94,0.25);
+    }
+
+    .patient-avatar {
+      width: 64px; height: 64px; border-radius: 50%;
+      background: linear-gradient(135deg, #64748b, #334155);
+      display: grid; place-items: center;
+      font-size: 24px; margin-bottom: 16px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+    }
+    .card.active .patient-avatar {
+      background: linear-gradient(135deg, var(--primary), #15803d);
+    }
+    .patient-name { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+    .patient-meta { font-size: 12px; color: var(--text-muted); margin-bottom: 18px; }
+    .patient-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: auto; }
+    .tag {
+      padding: 4px 8px; border-radius: 6px; font-size: 11px;
+      background: rgba(255,255,255,0.08); color: var(--text-muted);
+    }
+    .card.active .tag { background: rgba(34,197,94,0.15); color: #86efac; }
+    .mini-stats {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+      margin-top: 16px;
+    }
+    .mini-stat {
+      background: rgba(0,0,0,0.18); border-radius: 10px; padding: 10px;
+      text-align: center;
+    }
+    .mini-stat-v { font-size: 16px; font-weight: 700; }
+    .mini-stat-l { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+
+    .carousel-hint {
+      position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+      font-size: 12px; color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    /* 时间轴 */
+    .timeline {
+      height: 90px; border-radius: var(--radius);
+      background: var(--panel); border: 1px solid var(--border);
+      padding: 14px 18px;
+    }
+    .timeline-title { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
+    .timeline-track { display: flex; align-items: center; gap: 8px; }
+    .t-node {
+      width: 34px; height: 34px; border-radius: 50%;
+      background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+      display: grid; place-items: center; font-size: 11px; color: var(--text-muted);
+    }
+    .t-node.active { background: var(--primary); color: #052e16; font-weight: 700; }
+    .t-line { flex: 1; height: 2px; background: var(--border); }
+
+    /* 右侧详情 */
+    .detail {
+      background: var(--panel); border-left: 1px solid var(--border);
+      backdrop-filter: blur(20px);
+      padding: 26px; display: flex; flex-direction: column;
+    }
+    .detail-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .detail-title { font-size: 14px; font-weight: 700; }
+    .detail-badge {
+      padding: 4px 10px; border-radius: 20px; font-size: 11px;
+      background: rgba(34,197,94,0.15); color: #86efac; font-weight: 600;
+    }
+    .detail-avatar {
+      width: 72px; height: 72px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary), #15803d);
+      display: grid; place-items: center; font-size: 28px;
+      margin: 0 auto 16px; box-shadow: 0 12px 30px rgba(34,197,94,0.25);
+    }
+    .detail-name { text-align: center; font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+    .detail-id { text-align: center; font-size: 12px; color: var(--text-muted); margin-bottom: 24px; }
+
+    .info-list { display: flex; flex-direction: column; gap: 14px; }
+    .info-row { display: flex; justify-content: space-between; font-size: 13px; }
+    .info-label { color: var(--text-muted); }
+    .info-value { font-weight: 600; }
+
+    .detail-divider {
+      height: 1px; background: var(--border); margin: 22px 0;
+    }
+
+    .ai-box {
+      background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+      border-radius: 14px; padding: 14px;
+    }
+    .ai-title { font-size: 12px; color: var(--primary); font-weight: 700; margin-bottom: 8px; }
+    .ai-text { font-size: 12px; color: var(--text-muted); line-height: 1.6; }
+
+    .detail-actions {
+      margin-top: auto; display: flex; gap: 10px;
+    }
+    .detail-actions .btn { flex: 1; }
+
+    /* 滚动条 */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
+
+    /* 小屏适配 */
+    @media (max-width: 1200px) {
+      .app { grid-template-columns: 200px 1fr 300px; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- 左侧导航 -->
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-dot"></div>鹊动 QueDong</div>
+
+      <div class="nav-group">
+        <div class="nav-title">临床业务</div>
+        <div class="nav-item active"><span class="nav-icon">🏠</span>工作台首页</div>
+        <div class="nav-item"><span class="nav-icon">📝</span>患者首诊登记</div>
+        <div class="nav-item"><span class="nav-icon">📊</span>综合评估</div>
+        <div class="nav-item"><span class="nav-icon">🌿</span>生活方式问卷</div>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-title">肌力专项</div>
+        <div class="nav-item"><span class="nav-icon">⚙️</span>等速肌力评估</div>
+        <div class="nav-item"><span class="nav-icon">🏋️</span>等张肌力评估</div>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-title">方案</div>
+        <div class="nav-item"><span class="nav-icon">🎯</span>运动方案库</div>
+        <div class="nav-item"><span class="nav-icon">🧓</span>肌少症方案</div>
+      </div>
+
+      <div class="user">
+        <div class="user-avatar">Dr</div>
+        <div class="user-info">
+          <div class="user-name">陈医生</div>
+          <div class="user-role">康复科 · 主治医师</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 主内容 -->
+    <main class="main">
+      <div class="topbar">
+        <div class="page-title">
+          <h1>患者管理中心</h1>
+          <p>3D 动态轮播 · 点击卡片查看详情与制定干预方案</p>
+        </div>
+        <div class="top-actions">
+          <input class="search" type="text" placeholder="搜索患者姓名 / 病历号 / 手机号">
+          <button class="btn">筛选</button>
+          <button class="btn btn-primary">+ 新增患者</button>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat-card">
+          <div class="stat-label">今日新增</div>
+          <div class="stat-value">12</div>
+          <div class="stat-desc">较昨日 +3</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">待评估</div>
+          <div class="stat-value">28</div>
+          <div class="stat-desc">本周需完成</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">已完成评估</div>
+          <div class="stat-value">156</div>
+          <div class="stat-desc">本月累计</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">重点关注</div>
+          <div class="stat-value">3</div>
+          <div class="stat-desc">肌少症高风险</div>
+        </div>
+      </div>
+
+      <div class="stage-wrap">
+        <div class="stage-header">
+          <div>
+            <span class="stage-title">患者队列</span>
+            <span class="stage-sub">点击卡片选中，拖拽或自动轮播切换</span>
+          </div>
+          <div class="stage-controls">
+            <button class="btn" id="btn-prev">◀ 上一个</button>
+            <button class="btn" id="btn-auto">暂停轮播</button>
+            <button class="btn" id="btn-next">下一个 ▶</button>
+          </div>
+        </div>
+
+        <div class="carousel-stage">
+          <div class="carousel" id="carousel">
+            <!-- 卡片由 JS 生成 -->
+          </div>
+          <div class="carousel-hint">左右点击卡片切换 · 选中高亮绿色</div>
+        </div>
+      </div>
+
+      <div class="timeline">
+        <div class="timeline-title">本周评估时间轴</div>
+        <div class="timeline-track">
+          <div class="t-node active">一</div>
+          <div class="t-line"></div>
+          <div class="t-node active">二</div>
+          <div class="t-line"></div>
+          <div class="t-node">三</div>
+          <div class="t-line"></div>
+          <div class="t-node">四</div>
+          <div class="t-line"></div>
+          <div class="t-node">五</div>
+          <div class="t-line"></div>
+          <div class="t-node">六</div>
+          <div class="t-line"></div>
+          <div class="t-node">日</div>
+        </div>
+      </div>
+    </main>
+
+    <!-- 右侧详情 -->
+    <aside class="detail">
+      <div class="detail-header">
+        <div class="detail-title">智能详情</div>
+        <div class="detail-badge">重点关注</div>
+      </div>
+
+      <div id="detail-content">
+        <!-- 由 JS 填充 -->
+      </div>
+
+      <div class="detail-actions">
+        <button class="btn">编辑档案</button>
+        <button class="btn btn-primary">开始评估</button>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    const patients = [
+      { name: "王建国", id: "P2026080801", age: 68, gender: "男", bmi: 26.4, sarc: "中风险", muscle: "下降", risk: "高", advice: "建议 4 周内完成抗阻训练基线评估，并增加优质蛋白摄入。" },
+      { name: "李秀英", id: "P2026080802", age: 72, gender: "女", bmi: 22.1, sarc: "低风险", muscle: "正常低值", risk: "中", advice: "维持当前活动量，建议每周 2 次下肢力量训练并监测步速。" },
+      { name: "张伟", id: "P2026080803", age: 65, gender: "男", bmi: 28.9, sarc: "高风险", muscle: "明显下降", risk: "高", advice: "体重与肌肉量双高，优先安排营养干预 + 低冲击抗阻方案。" },
+      { name: "刘桂芳", id: "P2026080804", age: 70, gender: "女", bmi: 21.5, sarc: "中风险", muscle: "下降", risk: "中", advice: "BMI 偏低，重点补充乳清蛋白，配合坐位抬腿训练。" },
+      { name: "陈大伟", id: "P2026080805", age: 74, gender: "男", bmi: 24.8, sarc: "低风险", muscle: "正常", risk: "低", advice: "整体状况良好，建议继续保持每周 150 分钟中等强度活动。" },
+      { name: "赵红梅", id: "P2026080806", age: 69, gender: "女", bmi: 25.3, sarc: "中风险", muscle: "下降", risk: "中", advice: "腰围偏大，建议加入核心稳定训练并控制精制碳水。" },
+      { name: "孙志强", id: "P2026080807", age: 66, gender: "男", bmi: 23.7, sarc: "低风险", muscle: "正常", risk: "低", advice: "肌力正常，可进入维持期，每月随访一次即可。" }
+    ];
+
+    const carousel = document.getElementById('carousel');
+    const detailContent = document.getElementById('detail-content');
+    const btnPrev = document.getElementById('btn-prev');
+    const btnNext = document.getElementById('btn-next');
+    const btnAuto = document.getElementById('btn-auto');
+
+    const count = patients.length;
+    const angleStep = 360 / count;
+    let selected = 0;
+    let auto = true;
+    let timer = null;
+
+    function renderCards() {
+      carousel.innerHTML = patients.map((p, i) => `
+        <div class="card ${i === selected ? 'active' : ''}" data-i="${i}" style="--i:${i}">
+          <div class="patient-avatar">${p.name[0]}</div>
+          <div class="patient-name">${p.name}</div>
+          <div class="patient-meta">${p.gender} · ${p.age}岁 · BMI ${p.bmi}</div>
+          <div class="patient-tags">
+            <span class="tag">${p.sarc}</span>
+            <span class="tag">${p.muscle}</span>
+          </div>
+          <div class="mini-stats">
+            <div class="mini-stat"><div class="mini-stat-v">${p.risk}</div><div class="mini-stat-l">干预优先级</div></div>
+            <div class="mini-stat"><div class="mini-stat-v">${p.id.slice(-3)}</div><div class="mini-stat-l">病历尾号</div></div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderDetail() {
+      const p = patients[selected];
+      detailContent.innerHTML = `
+        <div class="detail-avatar">${p.name[0]}</div>
+        <div class="detail-name">${p.name}</div>
+        <div class="detail-id">病历号 ${p.id}</div>
+        <div class="info-list">
+          <div class="info-row"><span class="info-label">年龄 / 性别</span><span class="info-value">${p.age} 岁 / ${p.gender}</span></div>
+          <div class="info-row"><span class="info-label">BMI</span><span class="info-value">${p.bmi}</span></div>
+          <div class="info-row"><span class="info-label">肌少症风险</span><span class="info-value">${p.sarc}</span></div>
+          <div class="info-row"><span class="info-label">肌肉量趋势</span><span class="info-value">${p.muscle}</span></div>
+          <div class="info-row"><span class="info-label">干预优先级</span><span class="info-value">${p.risk}</span></div>
+        </div>
+        <div class="detail-divider"></div>
+        <div class="ai-box">
+          <div class="ai-title">AI 助手建议</div>
+          <div class="ai-text">${p.advice}</div>
+        </div>
+      `;
+    }
+
+    function updateCarousel() {
+      carousel.style.transform = `rotateY(${-selected * angleStep}deg)`;
+      document.querySelectorAll('.card').forEach((c, i) => {
+        c.classList.toggle('active', i === selected);
+      });
+      renderDetail();
+    }
+
+    function go(dir) {
+      selected = (selected + dir + count) % count;
+      updateCarousel();
+    }
+
+    function startAuto() {
+      stopAuto();
+      if (auto) timer = setInterval(() => go(1), 4000);
+    }
+    function stopAuto() { clearInterval(timer); timer = null; }
+
+    btnPrev.addEventListener('click', () => { stopAuto(); go(-1); if (auto) startAuto(); });
+    btnNext.addEventListener('click', () => { stopAuto(); go(1); if (auto) startAuto(); });
+    btnAuto.addEventListener('click', () => {
+      auto = !auto;
+      btnAuto.textContent = auto ? '暂停轮播' : '自动轮播';
+      if (auto) startAuto(); else stopAuto();
+    });
+
+    carousel.addEventListener('click', e => {
+      const card = e.target.closest('.card');
+      if (!card) return;
+      const i = Number(card.dataset.i);
+      if (i === selected) return;
+      stopAuto();
+      selected = i;
+      updateCarousel();
+      if (auto) startAuto();
+    });
+
+    renderCards();
+    updateCarousel();
+    startAuto();
+  </script>
+</body>
+</html>

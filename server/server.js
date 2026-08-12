@@ -1,0 +1,509 @@
+/**
+ * 鹊动FAC功能评估与干预系统 — 局域网后端骨架
+ * 纯内网 · Windows 单主机 · Node + Express + SQLite
+ *
+ * 职责（Phase 1）：
+ *   - 静态托管前端 SPA（默认 ../_dl3）
+ *   - SQLite 单文件库（data/app.db），含 users/patients/assessments/reports/media_meta/errors 表
+ *   - /health 健康检查
+ *   - /api/err-report 前端报错接收 + 管理员查看（统一上报 SDK 的后端落点）
+ *   - /api/login + /api/me 最小鉴权（HMAC 令牌，无外部依赖）
+ *   - /api/admin/backup 触发备份
+ *
+ * 运行：node server.js  （或经 nssm 注册为 Windows 服务）
+ */
+'use strict';
+
+// 加载项目根目录 .env（仅在变量未定义时补充，不覆盖系统/服务已设的环境变量）
+// 使 AI_CLOUD_* 等配置在任意启动方式（手动 / 计划任务 / nssm 服务）下都生效
+(function loadProjectEnv() {
+  try {
+    const fs = require('fs');
+    const envPath = require('path').join(__dirname, '..', '.env');
+    if (!fs.existsSync(envPath)) return;
+    const txt = fs.readFileSync(envPath, 'utf8');
+    txt.split(/\r?\n/).forEach(function (line) {
+      line = line.trim();
+      if (!line || line.charAt(0) === '#') return;
+      const i = line.indexOf('=');
+      if (i < 0) return;
+      const k = line.slice(0, i);
+      const v = line.slice(i + 1).trim().replace(/^["']|["']$/g, '');
+      if (process.env[k] === undefined || process.env[k] === '') process.env[k] = v;
+    });
+  } catch (e) { /* .env 加载失败不影响启动 */ }
+})();
+
+const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
+const express = require('express');
+const { DatabaseSync } = require('node:sqlite');
+const logger = require('./lib/logger');
+
+// ───────────────────────── 配置 ─────────────────────────
+const PORT = parseInt(process.env.PORT || '8080', 10);
+const ROOT = __dirname;
+const STATIC_DIR = process.env.STATIC_DIR || path.join(ROOT, '..', '_dl3');
+const DATA_DIR = path.join(ROOT, 'data');
+const MEDIA_DIR = path.join(ROOT, 'media');
+const BACKUP_DIR = path.join(ROOT, 'backups');
+[DATA_DIR, MEDIA_DIR, BACKUP_DIR].forEach(d => fs.mkdirSync(d, { recursive: true }));
+
+// 持久化签名密钥（首次运行生成，重启后保持一致，令牌才不会失效）
+const SECRET_FILE = path.join(DATA_DIR, '.secret');
+let SECRET = process.env.SECRET;
+if (!SECRET) {
+  if (fs.existsSync(SECRET_FILE)) SECRET = fs.readFileSync(SECRET_FILE, 'utf8').trim();
+  else { SECRET = crypto.randomBytes(32).toString('hex'); fs.writeFileSync(SECRET_FILE, SECRET, { mode: 0o600 }); }
+}
+
+// ───────────────────────── 数据库 ─────────────────────────
+// 使用 Node 内置 node:sqlite（零原生依赖，无需编译/预编译二进制）
+const db = new DatabaseSync(path.join(DATA_DIR, 'app.db'));
+db.exec('PRAGMA journal_mode = WAL');
+// ───────────────────────── 数据库迁移机制 (L1-8) ─────────────────────────
+// 所有建表/改表逻辑注册为幂等迁移，启动时按序执行并记录到 schema_migrations，
+// 避免重复执行、保证多机部署的 schema 一致与可回看。
+const MIGRATIONS = [];
+function registerMigration(id, up) {
+  if (typeof id !== 'string' || !id) throw new Error('迁移 id 非法');
+  if (typeof up !== 'function') throw new Error('迁移 ' + id + ' 缺少 up 函数');
+  MIGRATIONS.push({ id, up });
+}
+
+// v1: 初始表结构（全部使用 IF NOT EXISTS，已存在的库不会重复创建）
+registerMigration('v1_init_schema', function (db) {
+  db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    salt TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'doctor',
+    name TEXT,
+    expires_at TEXT,
+    must_change_pwd INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS patients (
+    id TEXT PRIMARY KEY,
+    data_json TEXT NOT NULL,
+    owner_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS assessments (
+    id TEXT PRIMARY KEY,
+    patient_id TEXT,
+    type TEXT,
+    data_json TEXT NOT NULL,
+    owner_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    locked_by TEXT,
+    locked_at TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS reports (
+    id TEXT PRIMARY KEY,
+    assessment_id TEXT,
+    type TEXT,
+    data_json TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS media_meta (
+    id TEXT PRIMARY KEY,
+    kind TEXT,
+    ref_id TEXT,
+    filename TEXT,
+    stored_path TEXT,
+    mime TEXT,
+    size INTEGER,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS errors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT DEFAULT (datetime('now')),
+    level TEXT,
+    msg TEXT,
+    url TEXT,
+    line INTEGER,
+    col INTEGER,
+    stack TEXT,
+    user_agent TEXT,
+    user_id TEXT,
+    meta_json TEXT
+  );
+  -- Phase 2 数据同步层：通用同步条目（一个表承载所有集合，按 collection 区分）
+  -- 任一集合的任一记录都存为一行；deleted=1 表示软删（客户端据此本地删除）
+  CREATE TABLE IF NOT EXISTS sync_items (
+    collection TEXT NOT NULL,
+    id TEXT NOT NULL,
+    data_json TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    owner_id TEXT,
+    PRIMARY KEY (collection, id)
+  );
+  -- 编辑锁（checkout lock）：谁在编辑某记录就占用，他人只读
+  CREATE TABLE IF NOT EXISTS sync_locks (
+    collection TEXT NOT NULL,
+    id TEXT NOT NULL,
+    locked_by TEXT NOT NULL,
+    locked_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    PRIMARY KEY (collection, id)
+  );
+  -- 患者端训练打卡（轻量、按患者维度聚合；同源开放，跨设备共享同一 share 链接即同步）
+  CREATE TABLE IF NOT EXISTS checkins (
+    pid TEXT NOT NULL,
+    date TEXT NOT NULL,
+    items TEXT NOT NULL,
+    updated_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (pid, date)
+  );
+`);
+});
+
+// v2: 兼容旧库——补齐 must_change_pwd 字段（L0-3）；已存在则静默跳过
+registerMigration('v2_users_must_change_pwd', function (db) {
+  try {
+    db.exec('ALTER TABLE users ADD COLUMN must_change_pwd INTEGER NOT NULL DEFAULT 0');
+  } catch (e) { /* 字段已存在则忽略 */ }
+});
+
+// 执行全部未应用的迁移
+function runMigrations(database) {
+  database.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+    id TEXT PRIMARY KEY,
+    applied_at TEXT DEFAULT (datetime('now'))
+  )`);
+  const applied = new Set(
+    database.prepare('SELECT id FROM schema_migrations').all().map(function (r) { return r.id; })
+  );
+  for (const m of MIGRATIONS) {
+    if (applied.has(m.id)) continue;
+    try {
+      m.up(database);
+      database.prepare('INSERT OR IGNORE INTO schema_migrations (id) VALUES (?)').run(m.id);
+      logger.info('[migrate] 已应用迁移: ' + m.id);
+    } catch (e) {
+      logger.error('[migrate] 迁移失败: ' + m.id + ' - ' + (e && e.message ? e.message : e));
+      throw e;
+    }
+  }
+}
+runMigrations(db);
+
+// 首次启动播种默认管理员（务必上线前修改密码）
+const userCount = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
+if (userCount === 0) {
+  const { hash, salt } = hashPassword('admin123');
+  db.prepare(`INSERT INTO users (id, username, password_hash, salt, role, name, must_change_pwd)
+    VALUES (?, ?, ?, ?, 'admin', '系统管理员', 1)`).run('u_admin', 'admin', hash, salt);
+  logger.info('[init] 已创建默认管理员账号  admin / admin123  （请尽快修改密码）');
+}
+
+// L0-3 安全自检：若仍有账号使用初始弱口令 admin123，启动即告警并标记强制改密
+try {
+  const rows = db.prepare('SELECT username, password_hash, salt FROM users').all();
+  let flagged = false;
+  for (const r of rows) {
+    if (verifyPassword('admin123', r.password_hash, r.salt)) {
+      flagged = true;
+      db.prepare('UPDATE users SET must_change_pwd = 1 WHERE username = ?').run(r.username);
+    }
+  }
+  if (flagged) {
+    logger.warn('\x1b[33m[安全警告] 仍存在使用默认口令 admin123 的账号，已标记强制改密，请尽快修改！\x1b[0m');
+  }
+} catch (e) { /* 自检失败不影响启动 */ }
+
+// ───────────────────────── 鉴权工具 ─────────────────────────
+function hashPassword(pwd) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(pwd, salt, 32).toString('hex');
+  return { hash, salt };
+}
+function verifyPassword(pwd, hash, salt) {
+  try {
+    const h = crypto.scryptSync(pwd, salt, 32).toString('hex');
+    return crypto.timingSafeEqual(Buffer.from(h, 'hex'), Buffer.from(hash, 'hex'));
+  } catch {
+    // 哈希/salt 长度异常或格式错误时不应抛出 500，统一按校验失败处理
+    return false;
+  }
+}
+function signToken(user) {
+  const payload = { uid: user.id, role: user.role, exp: Date.now() + 12 * 3600 * 1000 };
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', SECRET).update(body).digest('base64url');
+  return `${body}.${sig}`;
+}
+function verifyToken(token) {
+  if (!token || !token.includes('.')) return null;
+  const [body, sig] = token.split('.');
+  if (!body || !sig) return null;
+  const expect = crypto.createHmac('sha256', SECRET).update(body).digest('base64url');
+  try {
+    // 令牌被篡改/截断会导致长度不匹配，timingSafeEqual 会抛错；
+    // 此处捕获后返回 null，让上层统一返回 401，而非 500 崩溃
+    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return null;
+  } catch { return null; }
+  try {
+    const payload = JSON.parse(Buffer.from(body, 'base64url').toString());
+    if (payload.exp < Date.now()) return null;
+    return payload;
+  } catch { return null; }
+}
+function authMiddleware(req, res, next) {
+  const auth = req.headers['authorization'] || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  const p = verifyToken(token);
+  if (!p) return res.status(401).json({ error: '未登录或登录已过期' });
+  req.user = p;
+  next();
+}
+function adminOnly(req, res, next) {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: '需要管理员权限' });
+  next();
+}
+
+// ───────────────────────── 应用 ─────────────────────────
+const app = express();
+app.use(express.json({ limit: '2mb' }));
+
+// ── 选项2：同步与媒体接口鉴权（公网暴露前必做，现已启用）──
+// 任何合法登录令牌均可访问（共享诊所数据集，不按角色隔离）。
+// /api/login（拿令牌）与 /api/err-report（匿名上报）保持开放，不受此守卫影响。
+app.use('/api/sync', authMiddleware);
+app.use('/api/media', authMiddleware);
+
+// Phase 2 数据同步层路由（pull/push/lock）
+require('./sync-routes')(app, db, verifyToken);
+// Phase 3 媒体同步服务（磁盘文件 + sync_items 元数据）
+require('./media-routes')(app, db, MEDIA_DIR);
+// Phase 4 AI 能力路由（密钥安全 LLM 代理：本地 Ollama / 云 API / 混合）
+app.use('/api/ai', authMiddleware);
+require('./ai-routes')(app, db, verifyToken);
+
+// 健康检查（nssm / 监控轮询用）
+app.get('/health', (req, res) => res.json({ ok: true, ts: Date.now(), static: STATIC_DIR }));
+
+// 患者端训练打卡同步（同源开放：同一分享链接在任意设备打卡即共享）
+// GET /api/checkin?pid=<pid> -> {ok, items:[{date, items}]}
+// POST /api/checkin {pid, date, items} -> 覆盖写入当日打卡
+app.get('/api/checkin', (req, res) => {
+  const pid = (req.query.pid || '').toString().slice(0, 128);
+  if (!pid) return res.status(400).json({ error: '缺少 pid' });
+  try {
+    const rows = db.prepare('SELECT date, items FROM checkins WHERE pid = ? ORDER BY date DESC LIMIT 60').all(pid);
+    res.json({ ok: true, items: rows.map(r => ({ date: r.date, items: JSON.parse(r.items || '[]') })) });
+  } catch (e) { res.status(500).json({ error: '查询失败' }); }
+});
+app.post('/api/checkin', (req, res) => {
+  const b = req.body || {};
+  const pid = (b.pid || '').toString().slice(0, 128);
+  const date = (b.date || '').toString().slice(0, 24);
+  const items = Array.isArray(b.items) ? b.items.slice(0, 200) : [];
+  if (!pid || !date) return res.status(400).json({ error: '缺少 pid/date' });
+  try {
+    db.prepare(`INSERT INTO checkins (pid, date, items, updated_at) VALUES (?,?,?,datetime('now'))
+      ON CONFLICT(pid, date) DO UPDATE SET items = excluded.items, updated_at = datetime('now')`).run(pid, date, JSON.stringify(items));
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: '写入失败' }); }
+});
+
+// 报错接收（前端统一 SDK 落点，允许匿名，限流靠体量小）
+app.post('/api/err-report', (req, res) => {
+  const b = req.body || {};
+  if (!b.msg && !b.stack) return res.status(400).json({ error: '缺少 msg/stack' });
+  const auth = (req.headers['authorization'] || '').slice(7);
+  const p = verifyToken(auth);
+  try {
+    db.prepare(`INSERT INTO errors (level, msg, url, line, col, stack, user_agent, user_id, meta_json)
+      VALUES (?,?,?,?,?,?,?,?,?)`).run(
+      b.level || 'error', String(b.msg || '').slice(0, 4000), b.url || '', b.line || null, b.col || null,
+      String(b.stack || '').slice(0, 8000), req.headers['user-agent'] || '', p ? p.uid : '',
+      b.meta ? JSON.stringify(b.meta).slice(0, 2000) : null
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: '记录失败' });
+  }
+});
+
+// 报错列表（管理员）
+app.get('/api/err-report', authMiddleware, adminOnly, (req, res) => {
+  const rows = db.prepare('SELECT * FROM errors ORDER BY id DESC LIMIT 200').all();
+  res.json({ count: rows.length, rows });
+});
+
+// ── L0-5 登录失败限流（内存计次，重启清零；单主机内网场景足够）──
+const loginFails = new Map(); // key: ip|username -> { count, first }
+const LOGIN_MAX_FAIL = parseInt(process.env.LOGIN_MAX_FAIL || '10', 10);
+const LOGIN_WINDOW_MS = parseInt(process.env.LOGIN_WINDOW_MS || '600000', 10); // 10 分钟
+function isLoginBlocked(key) {
+  const now = Date.now();
+  const rec = loginFails.get(key);
+  if (!rec || now - rec.first > LOGIN_WINDOW_MS) {
+    loginFails.set(key, { count: 1, first: now });
+    return false;
+  }
+  rec.count++;
+  return rec.count > LOGIN_MAX_FAIL;
+}
+function clearLoginFails(key) { loginFails.delete(key); }
+// 定期清理过期计数，避免内存缓慢增长
+const _loginSweep = setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of loginFails) if (now - v.first > LOGIN_WINDOW_MS) loginFails.delete(k);
+}, LOGIN_WINDOW_MS);
+if (_loginSweep.unref) _loginSweep.unref();
+
+// 登录
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body || {};
+  const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().slice(0, 64);
+  const key = `${ip}|${username || ''}`;
+  if (isLoginBlocked(key)) {
+    return res.status(429).json({ error: '登录尝试过于频繁，请 10 分钟后再试' });
+  }
+  if (!username || !password) return res.status(400).json({ error: '缺少账号或密码' });
+  const u = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+  if (!u || !verifyPassword(password, u.password_hash, u.salt)) {
+    return res.status(401).json({ error: '账号或密码错误' });
+  }
+  if (u.expires_at && new Date(u.expires_at) < new Date()) {
+    return res.status(403).json({ error: '账号已过期，请联系管理员' });
+  }
+  clearLoginFails(key); // 成功登录清除失败计数
+  const token = signToken(u);
+  res.json({
+    token,
+    mustChangePwd: !!u.must_change_pwd,
+    user: { id: u.id, username: u.username, role: u.role, name: u.name }
+  });
+});
+
+// 当前用户
+app.get('/api/me', authMiddleware, (req, res) => {
+  const u = db.prepare('SELECT id, username, role, name, expires_at FROM users WHERE id = ?').get(req.user.uid);
+  res.json({ user: u });
+});
+
+// 修改自己的后端密码（任何登录用户均可，覆盖管理员改密码诉求）
+app.post('/api/me/change-password', authMiddleware, (req, res) => {
+  const { oldPassword, newPassword } = req.body || {};
+  if (!oldPassword || !newPassword) return res.status(400).json({ error: '缺少旧密码或新密码' });
+  if (String(newPassword).length < 6) return res.status(400).json({ error: '新密码至少 6 位' });
+  const u = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.uid);
+  if (!u || !verifyPassword(oldPassword, u.password_hash, u.salt)) {
+    return res.status(401).json({ error: '旧密码错误' });
+  }
+  const { hash, salt } = hashPassword(newPassword);
+  db.prepare('UPDATE users SET password_hash=?, salt=?, updated_at=datetime(\'now\') WHERE id=?')
+    .run(hash, salt, u.id);
+  res.json({ ok: true });
+});
+
+// 管理员创建后端账号（使多医生真实可用；隔离测试也依赖此接口）
+app.post('/api/admin/users', authMiddleware, adminOnly, (req, res) => {
+  const { username, password, role, name } = req.body || {};
+  if (!username || !password) return res.status(400).json({ error: '缺少用户名或密码' });
+  if (!/^[a-zA-Z0-9_]{3,}$/.test(username)) return res.status(400).json({ error: '用户名需字母数字下划线且 ≥3 位' });
+  if (String(password).length < 6) return res.status(400).json({ error: '密码至少 6 位' });
+  const role2 = (role === 'admin') ? 'admin' : 'doctor';
+  const exist = db.prepare('SELECT COUNT(*) AS n FROM users WHERE username=?').get(username);
+  if (exist.n) return res.status(409).json({ error: '用户名已存在' });
+  const { hash, salt } = hashPassword(password);
+  db.prepare('INSERT INTO users (id,username,password_hash,salt,role,name) VALUES (?,?,?,?,?,?)')
+    .run('u_' + Date.now().toString(36), username, hash, salt, role2, name || username);
+  res.json({ ok: true });
+});
+
+// 管理员强制修改某用户密码
+app.post('/api/admin/change-password', authMiddleware, adminOnly, (req, res) => {
+  const { username, newPassword } = req.body || {};
+  if (!username || !newPassword) return res.status(400).json({ error: '缺少用户名或新密码' });
+  if (String(newPassword).length < 6) return res.status(400).json({ error: '新密码至少 6 位' });
+  const u = db.prepare('SELECT * FROM users WHERE username=?').get(username);
+  if (!u) return res.status(404).json({ error: '用户不存在' });
+  const { hash, salt } = hashPassword(newPassword);
+  db.prepare('UPDATE users SET password_hash=?, salt=?, updated_at=datetime(\'now\') WHERE id=?')
+    .run(hash, salt, u.id);
+  res.json({ ok: true });
+});
+
+// 触发备份（管理员）
+app.post('/api/admin/backup', authMiddleware, adminOnly, (req, res) => {
+  try {
+    const dest = runBackup();
+    res.json({ ok: true, dest });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// 静态托管前端（开发/局域网环境禁用浏览器缓存，避免 iframe/硬刷新问题）
+app.use(express.static(STATIC_DIR, {
+  extensions: ['html'],
+  setHeaders: (res) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+  },
+}));
+// SPA 兜底（哈希路由下极少触发，但保留以免深链 404）
+app.get(/^(?!\/api).*/, (req, res) => {
+  const idx = path.join(STATIC_DIR, 'index.html');
+  if (fs.existsSync(idx)) res.sendFile(idx);
+  else res.status(404).send('index.html not found in ' + STATIC_DIR);
+});
+
+// ── L0-1 未匹配接口兜底（返回 JSON 404，而非 Express 默认 HTML）──
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api')) return res.status(404).json({ error: '接口不存在' });
+  next();
+});
+
+// ── L0-1 全局错误兜底（捕获路由/中间件抛出的未处理异常，避免返回堆栈泄露）──
+// 注意：错误中间件须放在所有路由之后、进程监听之前
+app.use((err, req, res, next) => {
+  console.error('[express-error]', err && err.stack ? err.stack : err);
+  if (res.headersSent) return next(err);
+  const detail = process.env.NODE_ENV === 'development' ? String((err && err.message) || err) : undefined;
+  res.status(500).json({ error: '服务器内部错误', detail });
+});
+
+// ── L0-1 进程级异常兜底（避免单点崩溃导致整服务退出、影响局域网所有终端）──
+function logFatal(tag, err) {
+  try { console.error(`[\x1b[31m${tag}\x1b[0m]`, err && err.stack ? err.stack : err); } catch (e) {}
+}
+process.on('uncaughtException', (err) => logFatal('uncaughtException', err));
+process.on('unhandledRejection', (reason) => logFatal('unhandledRejection', reason));
+
+// ───────────────────────── 备份 ─────────────────────────
+// 核心实现抽到 lib-backup.js，与独立进程 backup.js（计划任务用）共用同一套逻辑
+const _backup = require('./lib-backup.js');
+function runBackup() {
+  const r = _backup.runBackup(db, {
+    mediaDir: MEDIA_DIR,
+    backupDir: BACKUP_DIR,
+    keep: parseInt(process.env.BACKUP_KEEP || '30', 10)
+  });
+  return r.dest;
+}
+module.exports = { runBackup, app };
+
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    logger.info(`[quedong-backend] 监听 http://0.0.0.0:${PORT}`);
+    logger.info(`[quedong-backend] 静态目录: ${STATIC_DIR}`);
+    logger.info(`[quedong-backend] 数据库:   ${path.join(DATA_DIR, 'app.db')}`);
+  });
+}

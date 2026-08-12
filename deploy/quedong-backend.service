@@ -1,0 +1,49 @@
+# 鹊动后端 — systemd 服务单元
+# 放置路径：/etc/systemd/system/quedong-backend.service
+# 启用：sudo systemctl daemon-reload && sudo systemctl enable --now quedong-backend
+#
+# 说明：
+#  - 后端已监听 0.0.0.0:${PORT}，nginx/Caddy 反代到 127.0.0.1:${PORT} 即可。
+#  - 依赖 node:sqlite（Node 内置，无需编译）。要求 Node >= 22.13（免 --experimental-sqlite）；
+#    若使用 22.5–22.12，需在 ExecStart 的 node 后加 --experimental-sqlite。推荐 Node 24 LTS。
+#  - SECRET 留空时自动生成并持久化到 <部署目录>/server/data/.secret；首次启动后请备份该文件，
+#    否则迁移/重建容器后已签发的登录令牌会失效。
+
+[Unit]
+Description=Quedong Weight-Management & Sarcopenia Backend
+Documentation=file:///opt/quedong/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=quedong
+Group=quedong
+WorkingDirectory=/opt/quedong/server
+
+# 关键环境变量统一放在 EnvironmentFile，便于运维变更（无需改本文件）
+EnvironmentFile=/etc/quedong/quedong.env
+
+# 可执行文件：使用你实际安装的 node 路径（通过 `which node` 查看）
+ExecStart=/usr/bin/node /opt/quedong/server/server.js
+# 若 Node 版本在 22.5–22.12，改为：
+# ExecStart=/usr/bin/node --experimental-sqlite /opt/quedong/server/server.js
+
+# 优雅退出 / 崩溃自重启
+Restart=always
+RestartSec=3
+# 防止日志爆盘
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=quedong-backend
+
+# 安全加固（最小权限）
+NoNewPrivileges=true
+ProtectSystem=strict
+# 只有数据/媒体/备份目录需要写权限
+ReadWritePaths=/opt/quedong/server/data /opt/quedong/server/media /opt/quedong/server/backups
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

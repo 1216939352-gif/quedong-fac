@@ -1,0 +1,24 @@
+# 鹊动系统 · systemd 服务单元（Linux 生产守护）
+# 安装：sudo cp deploy/quedong.service /etc/systemd/system/
+#       sudo systemctl daemon-reload && sudo systemctl enable --now quedong
+# 环境变量：把 AI_* 写入 /opt/quedong/.env，并在下方 EnvironmentFile 指向它。
+
+[Unit]
+Description=Quedong Weight & Sarcopenia System (Node backend + AI proxy)
+After=network.target
+
+[Service]
+Type=simple
+User=quedong
+WorkingDirectory=/opt/quedong
+ExecStart=/usr/bin/node --experimental-sqlite /opt/quedong/server/server.js
+EnvironmentFile=/opt/quedong/.env
+Environment=NODE_OPTIONS=--experimental-sqlite
+Restart=on-failure
+RestartSec=3
+# 资源限制（按机器调整）
+LimitNOFILE=65535
+# 仅允许内网/本地访问时，可改为绑定 127.0.0.1（需同步改 server.js PORT 绑定）
+
+[Install]
+WantedBy=multi-user.target

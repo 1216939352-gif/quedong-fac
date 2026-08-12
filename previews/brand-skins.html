@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="obsidian" data-skin="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>鹊动 · 品牌限定版皮肤预览</title>
+<style>
+  :root[data-skin="dark"]{--bg1:#0a0b10;--bg2:#10121a;--text-1:#F6F7FA;--text-2:#9AA3B5;--surface:rgba(255,255,255,.05);--glass-bg:rgba(255,255,255,.07);--glass-brd:rgba(255,255,255,.16);--glass-hi:rgba(255,255,255,.10);--shadow:0 18px 48px rgba(0,0,0,.55);--hair:rgba(255,255,255,.10);--orb-op:.9;}
+  :root[data-skin="light"]{--bg1:#F4F4F6;--bg2:#E9E9ED;--text-1:#18181B;--text-2:#52525B;--surface:rgba(255,255,255,.78);--glass-bg:rgba(255,255,255,.72);--glass-brd:rgba(255,255,255,.9);--glass-hi:rgba(255,255,255,.95);--shadow:0 18px 44px rgba(20,25,45,.14);--hair:rgba(20,30,60,.10);--orb-op:.5;}
+
+  /* 曜石黑金（Logo） */
+  :root[data-theme="obsidian"][data-skin="dark"]{
+    --accent:#F57C00;--accent-2:#FFB74D;--accent-ink:#F57C00;--accent-soft:rgba(245,124,0,.15);
+    --grad:linear-gradient(135deg,#F57C00,#FF9800);--metal:linear-gradient(145deg,#22242C,#13151B);
+    --orb1:rgba(245,124,0,.25);--orb2:rgba(255,152,0,.12);
+  }
+  :root[data-theme="obsidian"][data-skin="light"]{
+    --accent:#F57C00;--accent-2:#F59E0B;--accent-ink:#C05600;--accent-soft:rgba(245,124,0,.13);
+    --grad:linear-gradient(135deg,#F57C00,#F59E0B);--metal:linear-gradient(145deg,#F5F5F6,#E4E4E7);
+    --orb1:rgba(245,124,0,.20);--orb2:rgba(245,124,0,.10);
+  }
+  /* 小Qoo萌趣（吉祥物） */
+  :root[data-theme="qoo"][data-skin="light"]{
+    --accent:#2563EB;--accent-2:#3B82F6;--accent-ink:#1D4ED8;--accent-soft:rgba(37,99,235,.12);
+    --grad:linear-gradient(135deg,#2563EB,#60A5FA);--yellow:#FACC15;--red:#EF4444;
+    --orb1:rgba(37,99,235,.18);--orb2:rgba(96,165,250,.12);
+  }
+  :root[data-theme="qoo"][data-skin="dark"]{
+    --accent:#3B82F6;--accent-2:#60A5FA;--accent-ink:#93C5FD;--accent-soft:rgba(59,130,246,.15);
+    --grad:linear-gradient(135deg,#2563EB,#3B82F6);--yellow:#FDE047;--red:#F87171;
+    --orb1:rgba(59,130,246,.25);--orb2:rgba(96,165,250,.14);
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;color:var(--text-1);background:linear-gradient(160deg,var(--bg1),var(--bg2));min-height:100vh;padding:24px}
+  .orb{position:fixed;border-radius:50%;filter:blur(80px);opacity:var(--orb-op);z-index:0;pointer-events:none}
+  .orb.a{width:420px;height:420px;background:var(--orb1);top:-120px;left:-80px}
+  .orb.b{width:380px;height:380px;background:var(--orb2);bottom:-140px;right:-60px}
+
+  .wrap{position:relative;z-index:1;max-width:1180px;margin:0 auto}
+  h1{font-size:26px;font-weight:900;text-align:center;margin-bottom:6px;letter-spacing:1px}
+  .lead{text-align:center;color:var(--text-2);font-size:14px;margin-bottom:28px}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+  @media(max-width:880px){.grid{grid-template-columns:1fr}}
+
+  .panel{background:var(--glass-bg);border:1px solid var(--glass-brd);border-radius:24px;backdrop-filter:blur(20px);box-shadow:var(--shadow), inset 0 1px 0 var(--glass-hi);padding:22px;position:relative;overflow:hidden}
+  .panel::before{content:"";position:absolute;top:0;left:0;right:0;height:5px;background:var(--grad)}
+
+  .p-head{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+  .brand-img{height:70px;width:auto;object-fit:contain;filter:drop-shadow(0 6px 12px rgba(0,0,0,.25))}
+  .p-head div{flex:1}
+  .p-head h2{font-size:20px;font-weight:900}
+  .p-head p{font-size:12.5px;color:var(--text-2);margin-top:4px;line-height:1.5}
+  .p-ctrl{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}
+  .chip{border:1px solid var(--hair);background:var(--surface);color:var(--text-2);cursor:pointer;font-size:13px;font-weight:700;padding:7px 13px;border-radius:10px;transition:.2s}
+  .chip.active{background:var(--accent-soft);color:var(--accent);border-color:var(--glass-brd)}
+
+  .swatches{display:flex;gap:8px;margin:14px 0}
+  .sw{width:26px;height:26px;border-radius:8px;border:2px solid rgba(255,255,255,.2);box-shadow:0 4px 10px rgba(0,0,0,.2)}
+
+  .card{background:var(--surface);border:1px solid var(--hair);border-radius:18px;padding:16px;margin-top:14px}
+  .kpi{display:flex;gap:16px;align-items:center;justify-content:space-between}
+  .kpi .v{font-size:32px;font-weight:900;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .kpi .l{font-size:12px;color:var(--text-2)}
+  .kpi .up{font-size:12px;color:var(--accent);font-weight:800}
+  .bars{display:flex;align-items:flex-end;gap:8px;height:90px;margin-top:16px}
+  .bar{flex:1;border-radius:10px;background:var(--grad);opacity:.85}
+  .bar:nth-child(1){height:42%}.bar:nth-child(2){height:68%}.bar:nth-child(3){height:55%}.bar:nth-child(4){height:82%}.bar:nth-child(5){height:63%}
+
+  .btn{display:inline-flex;align-items:center;gap:8px;border:0;border-radius:13px;padding:10px 18px;font-weight:800;cursor:pointer;background:var(--grad);color:#fff;box-shadow:0 8px 22px var(--accent-soft);font-size:14px;margin-top:12px}
+  .btn.outline{background:transparent;border:1.5px solid var(--hair);color:var(--text-1);box-shadow:none}
+  .tag{display:inline-block;padding:5px 11px;border-radius:10px;font-size:12px;font-weight:800;background:var(--accent-soft);color:var(--accent-ink)}
+
+  /* 曜石专属金属卡 */
+  :root[data-theme="obsidian"] .metal{background:var(--metal);border-color:rgba(255,255,255,.08)}
+  :root[data-theme="obsidian"][data-skin="light"] .metal{background:var(--metal);border-color:rgba(0,0,0,.06)}
+
+  /* Qoo 专属萌趣元素 */
+  :root[data-theme="qoo"] .panel{border-radius:28px}
+  :root[data-theme="qoo"] .card{border-radius:22px}
+  :root[data-theme="qoo"] .btn{border-radius:18px}
+  :root[data-theme="qoo"] .tag.yellow{background:rgba(250,204,21,.18);color:#B45309}
+  :root[data-theme="qoo"][data-skin="dark"] .tag.yellow{color:#FDE047}
+  .qoo-feet{position:absolute;right:14px;bottom:14px;width:52px;height:52px;opacity:.18;background:radial-gradient(circle at 30% 30%,var(--yellow) 20%,transparent 21%),radial-gradient(circle at 70% 30%,var(--yellow) 20%,transparent 21%),radial-gradient(circle at 50% 70%,var(--red) 28%,transparent 30%);pointer-events:none}
+
+  .rise{animation:rise .7s cubic-bezier(.2,.8,.2,1) both}
+  @keyframes rise{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+  <div class="orb a"></div><div class="orb b"></div>
+  <div class="wrap">
+    <h1>鹊动 · 品牌限定版皮肤</h1>
+    <p class="lead">基于「鹊动 Logo」与「小 Qoo 吉祥物」专属配色，可单独切换深/浅色。</p>
+    <div class="grid">
+      <!-- 曜石黑金 -->
+      <div class="panel rise">
+        <div class="p-head">
+          <img src="quedong-logo.png" class="brand-img" alt="鹊动logo" />
+          <div><h2>曜石黑金 · 限定版</h2><p>取 Logo 曜石黑与胶囊橙，3D 金属玻璃质感，高端稳重。</p></div>
+        </div>
+        <div class="p-ctrl">
+          <button class="chip active" onclick="setSkin('obsidian','dark',this)">深色</button>
+          <button class="chip" onclick="setSkin('obsidian','light',this)">浅色</button>
+        </div>
+        <div class="swatches">
+          <span class="sw" style="background:#0A0A0A"></span>
+          <span class="sw" style="background:#F57C00"></span>
+          <span class="sw" style="background:#FFB74D"></span>
+          <span class="sw" style="background:#2A2D36"></span>
+        </div>
+        <div class="card metal">
+          <div class="kpi"><div><div class="v">86.2%</div><div class="l">肌少症干预有效率</div></div><div class="up">↑ 4.3%</div></div>
+          <div class="bars"><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
+        </div>
+        <div class="card metal" style="display:flex;gap:12px;align-items:center;margin-top:12px">
+          <span class="tag">橙黑限定</span><span style="color:var(--text-2);font-size:13px">质感：金属拉丝 + 玻璃折射</span>
+          <button class="btn" style="margin-left:auto;margin-top:0">查看详情 →</button>
+        </div>
+      </div>
+
+      <!-- 小Qoo萌趣 -->
+      <div class="panel rise" style="animation-delay:.1s">
+        <div class="qoo-feet"></div>
+        <div class="p-head">
+          <img src="xiaoqoo-mascot.png" class="brand-img" alt="小Qoo" />
+          <div><h2>小 Qoo 萌趣 · 限定版</h2><p>取吉祥物亮蓝翅膀、黄色喙足与红色 Q 标，圆润亲和。</p></div>
+        </div>
+        <div class="p-ctrl">
+          <button class="chip active" onclick="setSkin('qoo','light',this)">浅色</button>
+          <button class="chip" onclick="setSkin('qoo','dark',this)">深色</button>
+        </div>
+        <div class="swatches">
+          <span class="sw" style="background:#2563EB"></span>
+          <span class="sw" style="background:#FACC15"></span>
+          <span class="sw" style="background:#EF4444"></span>
+          <span class="sw" style="background:#0F172A"></span>
+        </div>
+        <div class="card">
+          <div class="kpi"><div><div class="v">128</div><div class="l">本周运动打卡人次</div></div><div class="up">↑ 12</div></div>
+          <div class="bars"><div class="bar" style="height:55%"></div><div class="bar" style="height:72%"></div><div class="bar" style="height:48%"></div><div class="bar" style="height:91%"></div><div class="bar" style="height:67%"></div></div>
+        </div>
+        <div class="card" style="display:flex;gap:12px;align-items:center;margin-top:12px">
+          <span class="tag yellow">Qoo 限定</span><span style="color:var(--text-2);font-size:13px">质感：圆润泡泡 + 轻量阴影</span>
+          <button class="btn" style="margin-left:auto;margin-top:0">去打卡 →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  function setSkin(theme,skin,btn){
+    document.documentElement.setAttribute('data-theme',theme);
+    document.documentElement.setAttribute('data-skin',skin);
+    // update active chip within both panels based on theme
+    document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+    const selector='.panel:has(h2) .chip'; // simple heuristic: mark clicked
+    btn.classList.add('active');
+    // also keep sibling logic: same-theme sibling active
+    const same = Array.from(document.querySelectorAll('.chip')).filter(c=>c.getAttribute('onclick')?.includes(`'${theme}','${skin}'`));
+    same.forEach(c=>c.classList.add('active'));
+  }
+</script>
+</body>
+</html>

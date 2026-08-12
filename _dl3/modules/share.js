@@ -1,0 +1,429 @@
+/**
+ * 鹊动FAC功能评估与干预系统 - 患者只读分享模块
+ * 设计：纯静态、无后端。将患者综合评估报告与智能运动方案编码进 URL，
+ * 生成可扫码的分享链接；患者扫码后免登录以只读方式查看。
+ */
+(function () {
+  'use strict';
+
+  /* ---------- 编解码（UTF-8 安全 base64） ---------- */
+  function utf8ToB64(str) {
+    return btoa(unescape(encodeURIComponent(str)));
+  }
+  function b64ToUtf8(b64) {
+    return decodeURIComponent(escape(atob(b64)));
+  }
+
+  /* ---------- 从当前工作上下文抽取可分享数据 ---------- */
+  function snapshotShareData(opts) {
+    opts = opts || {};
+    // AI 解读专属快照：仅携带 AI 解读 + 方案 + 最小患者信息，链接更短、页面更聚焦
+    if (opts.mode === 'ai') {
+      var p0 = AppState.patient || {};
+      return {
+        v: 1,
+        mode: 'ai',
+        patient: { id: p0.id || '', name: p0.name || '', gender: p0.gender || '', age: p0.age || '', birth: p0.birth || '' },
+        ai: AppState.ai || {}
+      };
+    }
+    // 肌少症模块优先：外部已准备好快照
+    if (window.__sarcSharePayload && window.__sarcSharePayload.module === 'sarcopenia') {
+      var sp0 = window.__sarcSharePayload.rec || {};
+      if (AppState.ai) sp0.ai = AppState.ai; // 若生成过 AI 解读也一并携带
+      return { v: 1, module: 'sarcopenia', sarcopenia: sp0 };
+    }
+    // 递归剥离体积较大的 svg 装饰字段，避免链接过长超出二维码容量
+    const strip = (o) => {
+      if (o == null || typeof o !== 'object') return o;
+      if (Array.isArray(o)) return o.map(strip);
+      const out = {};
+      for (const k in o) {
+        if (k === 'svg' || k === 'diagram' || k === '_raw' || k === 'RAW' || k === 'NOTE') continue;
+        const v = o[k];
+        out[k] = (typeof v === 'string' && v.length > 2000) ? v.slice(0, 2000) : strip(v);
+      }
+      return out;
+    };
+    // 生活方式问卷仅保留原始作答，派生评分在解码端重算，控制二维码容量
+    const trimLife = (o) => {
+      const out = {};
+      for (const k in o) { if (k !== '_scored' && k !== '_advice') out[k] = o[k]; }
+      return out;
+    };
+    return {
+      v: 1,
+      patient: AppState.patient || {},
+      assessment: AppState.assessment || {},
+      lifeSurvey: trimLife(AppState.lifeSurvey || {}),
+      plan: strip(AppState.plan || {}),
+      isokineticData: AppState.isokineticData || [],
+      isotonicData: AppState.isotonicData || [],
+      ai: AppState.ai || {} // 携带 AI 解读（含方案），供「分享携带 AI 结果」
+    };
+  }
+
+  function buildShareURL(opts) {
+    const payload = utf8ToB64(JSON.stringify(snapshotShareData(opts)));
+    let base;
+    if (location.protocol === 'file:' || location.origin === 'null') {
+      // 本地 file:// 无法被手机扫码访问，仅作同设备复制用途
+      base = location.href.split('?')[0];
+    } else {
+      base = location.origin + location.pathname;
+    }
+    return base + '?share=' + encodeURIComponent(payload);
+  }
+
+  function decodeShare(param) {
+    try {
+      const json = b64ToUtf8(decodeURIComponent(param));
+      const data = JSON.parse(json);
+      if (!data || typeof data !== 'object') return null;
+      return data;
+    } catch (e) {
+      console.warn('分享链接解析失败', e);
+      return null;
+    }
+  }
+
+  function applyToAppState(data) {
+    if (data.module === 'sarcopenia') {
+      // 肌少症报告由解码端直接渲染，不写入主系统 AppState
+      return;
+    }
+    AppState.patient = data.patient || {};
+    AppState.assessment = data.assessment || {};
+    const ls = data.lifeSurvey || {};
+    // 解码端以原始作答重算派生评分，保证只读报告完整
+    if (ls && !ls._scored && Calc && Calc.lifeSurveyScore) {
+      try {
+        const raw = {};
+        Object.keys(ls).forEach(k => { if (k !== '_scored' && k !== '_advice') raw[k] = ls[k]; });
+        if (Object.keys(raw).length) {
+          const sc = Calc.lifeSurveyScore(raw);
+          ls._scored = sc;
+          ls._advice = Calc.lifeAdvice ? Calc.lifeAdvice(sc, AppState.assessment, AppState.patient, null) : {};
+        }
+      } catch (e) { /* 忽略，保留原始作答 */ }
+    }
+    AppState.lifeSurvey = ls;
+    AppState.plan = data.plan || {};
+    AppState.isokineticData = data.isokineticData || [];
+    AppState.isotonicData = data.isotonicData || [];
+    if (!AppState.config) AppState.config = {};
+  }
+
+  /* ---------- 患者端训练打卡（本地持久化） ---------- */
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function dateStr(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+  function checkinKey(pid, ds) { return 'qd:checkin:' + (pid || 'anon') + ':' + ds; }
+  function loadCheckin(pid, ds) {
+    try { const r = localStorage.getItem(checkinKey(pid, ds)); return new Set(r ? JSON.parse(r) : []); }
+    catch (e) { return new Set(); }
+  }
+  function saveCheckin(pid, ds, set) {
+    try { localStorage.setItem(checkinKey(pid, ds), JSON.stringify([...set])); } catch (e) {}
+  }
+  function getCheckinCount(pid, ds) { return loadCheckin(pid, ds).size; }
+
+  // 与后端对齐的同源打卡同步（跨设备共享同一 share 链接即同步；无后端/离线时静默降级）
+  function checkinApiBase() {
+    try { return localStorage.getItem('sync_api_base') || ''; } catch (e) { return ''; }
+  }
+  async function syncCheckinFromServer(pid) {
+    if (!pid || pid === 'anon') return;
+    if (window.Sync && window.Sync.isOnline && window.Sync.isOnline() === false) return;
+    try {
+      const r = await fetch(checkinApiBase() + '/api/checkin?pid=' + encodeURIComponent(pid));
+      if (!r.ok) return;
+      const j = await r.json();
+      if (!j || !Array.isArray(j.items)) return;
+      j.items.forEach(function (it) {
+        if (!it || !it.date || !Array.isArray(it.items)) return;
+        const merged = loadCheckin(pid, it.date); // 本地已有则并集，互补不丢
+        it.items.forEach(function (k) { merged.add(k); });
+        saveCheckin(pid, it.date, merged);
+      });
+    } catch (e) { /* 离线/无后端：忽略，保持本地记录 */ }
+  }
+  async function syncCheckinToServer(pid, ds, set) {
+    if (!pid || pid === 'anon') return;
+    if (window.Sync && window.Sync.isOnline && window.Sync.isOnline() === false) return;
+    try {
+      await fetch(checkinApiBase() + '/api/checkin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pid: pid, date: ds, items: [...set] })
+      });
+    } catch (e) { /* 离线/无后端：忽略，本地已保存 */ }
+  }
+
+  function buildCheckinHistoryHTML(pid) {
+    const today = new Date();
+    let streak = 0;
+    for (let i = 0; i < 365; i++) {
+      const d = new Date(today); d.setDate(today.getDate() - i);
+      if (getCheckinCount(pid, dateStr(d)) > 0) streak++;
+      else if (i > 0) break; // 今天还没打卡时，从昨天往前算连续天数
+    }
+    const wdName = ['日', '一', '二', '三', '四', '五', '六'];
+    let cells = '';
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today); d.setDate(today.getDate() - i);
+      const ds = dateStr(d);
+      const c = getCheckinCount(pid, ds);
+      cells += '<div class="ck-cell' + (i === 0 ? ' ck-today' : '') + (c > 0 ? ' ck-on' : '') + '">' +
+        '<div class="ck-wd">' + wdName[d.getDay()] + '</div>' +
+        '<div class="ck-dot"></div>' +
+        '<div class="ck-cnt">' + (c > 0 ? c + '项' : '') + '</div>' +
+        '</div>';
+    }
+    return '<div class="checkin-history" id="checkin-history">' +
+      '<div class="ck-title">📅 我的训练打卡</div>' +
+      '<div class="ck-streak">🔥 连续打卡 <b>' + streak + '</b> 天</div>' +
+      '<div class="ck-week">' + cells + '</div>' +
+      '<div class="ck-hint text-muted">点下方「今日任务」逐项打卡；联网时记录自动同步到其他设备（同一分享链接），仅本机缓存清空也不影响已同步数据。</div>' +
+      '</div>';
+  }
+
+  /* ---------- 轻量 markdown 渲染（分享只读页自带，避免依赖 ai-reason.js 加载时机） ---------- */
+  function mdLite(md) {
+    if (!md) return '';
+    var esc = (typeof U !== 'undefined' && U.esc) ? U.esc : function (s) {
+      return String(s).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; });
+    };
+    var lines = String(md).split(/\r?\n/);
+    var html = '', listOpen = false, listTag = '';
+    function closeList() { if (listOpen) { html += '</' + listTag + '>'; listOpen = false; } }
+    lines.forEach(function (ln) {
+      var t = ln.trim();
+      if (!t) { closeList(); return; }
+      var h = t.match(/^(#{1,4})\s+(.*)$/);
+      if (h) { closeList(); var lvl = h[1].length; html += '<h' + lvl + ' class="ai-md-h">' + esc(h[2]) + '</h' + lvl + '>'; return; }
+      var ul = t.match(/^[-*]\s+(.*)$/);
+      if (ul) { if (!listOpen) { html += '<ul class="ai-md-ul">'; listOpen = true; listTag = 'ul'; } html += '<li>' + esc(ul[1]) + '</li>'; return; }
+      var ol = t.match(/^\d+\.\s+(.*)$/);
+      if (ol) { if (!listOpen) { html += '<ol class="ai-md-ol">'; listOpen = true; listTag = 'ol'; } html += '<li>' + esc(ol[1]) + '</li>'; return; }
+      var safe = esc(t).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
+      html += '<p class="ai-md-p">' + safe + '</p>';
+    });
+    closeList();
+    return html;
+  }
+  function buildAiBlock(ai) {
+    if (!ai || !ai.interpret || !ai.interpret.markdown) return '';
+    var inter = ai.interpret;
+    var html = '<div class="share-ai-block">' +
+      '<div class="share-ai-head"><span class="ai-icon-wrap">' + (window.qooIcon ? window.qooIcon('sm') : '') + '</span> 鹊动小Qoo AI 解读' +
+      (inter.provider ? ' <span class="share-ai-prov">· ' + U.esc(inter.provider) + '</span>' : '') + '</div>' +
+      '<div class="ai-md share-ai-md">' + mdLite(inter.markdown) + '</div>';
+    if (ai.plan && (ai.plan.raw || ai.plan.plan)) {
+      html += '<div class="share-ai-plan-note">🏋️ 含鹊动小Qoo 推荐方案，详见下方完整方案。</div>';
+    }
+    html += '<div class="share-ai-foot">鹊动小Qoo 辅助生成，须经专业人员确认</div></div>';
+    return html;
+  }
+  // AI 解读专属分享页（聚焦展示 AI 解读 + 方案，不含训练打卡）
+  function renderAiShell(app, data) {
+    var ai = data.ai || {};
+    var inner = '';
+    if (ai.interpret && ai.interpret.markdown) {
+      inner += '<div class="share-ai-block">' +
+        '<div class="share-ai-head"><span class="ai-icon-wrap">' + (window.qooIcon ? window.qooIcon('sm') : '') + '</span> 鹊动小Qoo AI 解读' +
+        (ai.interpret.provider ? ' <span class="share-ai-prov">· ' + U.esc(ai.interpret.provider) + '</span>' : '') + '</div>' +
+        '<div class="ai-md share-ai-md">' + mdLite(ai.interpret.markdown) + '</div>' +
+        '<div class="share-ai-foot">鹊动小Qoo 辅助生成，须经专业人员确认</div></div>';
+    }
+    if (ai.plan && (ai.plan.raw || ai.plan.plan)) {
+      var planRaw = ai.plan.raw || JSON.stringify(ai.plan.plan);
+      inner += '<div class="share-ai-block">' +
+        '<div class="share-ai-head"><span class="ai-icon-wrap">🏋️</span> 鹊动小Qoo 推荐方案' +
+        (ai.plan.provider ? ' <span class="share-ai-prov">· ' + U.esc(ai.plan.provider) + '</span>' : '') + '</div>' +
+        '<div class="ai-md share-ai-md">' + mdLite(planRaw) + '</div>' +
+        '<div class="share-ai-foot">鹊动小Qoo 辅助生成，须经专业人员确认</div></div>';
+    }
+    if (!inner) inner = '<div class="alert alert-warning">尚未生成 AI 解读，请先在医生端生成后再分享本页。</div>';
+    app.innerHTML =
+      '<div class="share-view">' +
+        '<div class="share-topbar no-print">' +
+          '<div class="share-brand"><span class="share-dot"></span>' + U.esc((window.CONST && CONST.SYSTEM_NAME) || '鹊动') + ' · AI 解读（只读分享）</div>' +
+          '<div class="topbar-actions">' +
+            '<button class="btn btn-primary btn-sm" id="share-print">📄 导出 PDF</button>' +
+            '<button class="btn btn-ghost btn-sm" id="share-back">返回登录</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="share-body share-body-ai" id="share-body">' + inner + '</div>' +
+        '<div class="share-foot no-print">本页为只读 AI 解读分享，可导出 PDF 留存或打印；所有结论须经专业人员确认。</div>' +
+      '</div>';
+    U.qs('#share-print', app).onclick = function () { window.print(); };
+    U.qs('#share-back', app).onclick = function () { location.href = location.pathname + location.hash; };
+  }
+
+  /* ---------- 只读分享视图（免登录 · 含训练打卡） ---------- */
+  function renderShareShell(data) {
+    const app = U.qs('#app');
+    if (!app) return;
+    const isAi = data && data.mode === 'ai';
+    if (isAi) { renderAiShell(app, data); return; }
+    const isSarc = data && data.module === 'sarcopenia';
+    const pid = (data && data.patient && data.patient.id) || (data && data.sarcopenia && data.sarcopenia.id) || 'anon';
+    app.innerHTML = `
+      <div class="share-view">
+        <div class="share-topbar no-print">
+          <div class="share-brand">
+            <span class="share-dot"></span>${U.esc((window.CONST && CONST.SYSTEM_NAME) || '鹊动')} · 患者端（训练打卡）
+          </div>
+          <div class="topbar-actions">
+            <button class="btn btn-primary btn-sm" id="share-print">📄 导出 PDF</button>
+            <button class="btn btn-ghost btn-sm" id="share-back">返回登录</button>
+          </div>
+        </div>
+        <div class="share-body ${isSarc ? 'share-body-sarc' : ''}" id="share-body"></div>
+        <div class="share-foot no-print">本报告为只读分享，可导出 PDF 留存或打印；训练打卡记录保存在本机浏览器，仅供您本人查看与坚持。</div>
+      </div>`;
+    U.qs('#share-print', app).onclick = () => window.print();
+    U.qs('#share-back', app).onclick = () => { location.href = location.pathname + location.hash; };
+    const body = U.qs('#share-body', app);
+    const todayTasks = (window.buildTodayTasks ? window.buildTodayTasks() : '');
+    const historyHTML = buildCheckinHistoryHTML(pid);
+    const aiBlock = buildAiBlock(data.ai);
+    if (isSarc) {
+      body.innerHTML = historyHTML + todayTasks + aiBlock + (window.buildSarcReport ? window.buildSarcReport(data.sarcopenia) : '<div class="alert alert-warning">肌少症报告组件未就绪</div>');
+    } else {
+      body.innerHTML = historyHTML + todayTasks + aiBlock + (window.buildReportDoc ? window.buildReportDoc() : '<div class="alert alert-warning">报告组件未就绪</div>');
+    }
+
+    const todayStr = dateStr(new Date());
+    // 回填今日任务勾选状态 + 无任务占位
+    function applyTodayChecks() {
+      const items = body.querySelectorAll('.tt-item');
+      const checked = loadCheckin(pid, todayStr);
+      items.forEach(function (it, i) {
+        it.dataset.ck = (pid || 'anon') + ':' + i;
+        if (checked.has(it.dataset.ck)) it.classList.add('done'); else it.classList.remove('done');
+      });
+      if (items.length === 0) {
+        const ph = body.querySelector('#checkin-history');
+        if (ph && !body.querySelector('.checkin-empty')) ph.insertAdjacentHTML('afterend', '<div class="checkin-empty text-muted">今日暂无训练任务，方案更新后这里会出现可打卡的项目。</div>');
+      }
+    }
+    function refreshHistory() {
+      const h = body.querySelector('#checkin-history');
+      if (h) h.outerHTML = buildCheckinHistoryHTML(pid);
+    }
+    // 点击今日任务 → 打卡（持久化本机 + 跨设备同步）
+    body.addEventListener('click', function (e) {
+      const it = e.target.closest('.tt-item');
+      if (!it) return;
+      const key = it.dataset.ck;
+      it.classList.toggle('done');
+      const set = loadCheckin(pid, todayStr);
+      if (it.classList.contains('done')) set.add(key); else set.delete(key);
+      saveCheckin(pid, todayStr, set);
+      refreshHistory();
+      syncCheckinToServer(pid, todayStr, set); // 无后端/离线时静默失败，本地已保存
+    });
+    applyTodayChecks();
+    // 跨设备同步：从后端拉取该患者打卡并合并到本机，再刷新视图
+    if (pid && pid !== 'anon') {
+      syncCheckinFromServer(pid).then(function () { refreshHistory(); applyTodayChecks(); });
+    }
+  }
+
+  /* 由 app.js 的 init() 在最早阶段调用：若存在 ?share= 则渲染只读视图并拦截登录 */
+  function maybeRenderShare() {
+    const params = new URLSearchParams(location.search);
+    const p = params.get('share');
+    if (!p) return false;
+    const app = U.qs('#app');
+    const data = decodeShare(p);
+    if (!data) {
+      if (app) app.innerHTML = `<div class="share-view"><div class="share-body"><div class="alert alert-danger">分享链接已损坏或已失效，请向您的主治医师重新获取。</div></div></div>`;
+      return true;
+    }
+    applyToAppState(data);
+    renderShareShell(data);
+    return true;
+  }
+
+  /* ---------- 医生端：生成分享二维码弹窗 ---------- */
+  function openQRModal(opts) {
+    opts = opts || {};
+    var isAi = opts.mode === 'ai';
+    if (typeof window.qrcode !== 'function') {
+      U.toast('二维码组件未加载，无法生成', 'error');
+      return;
+    }
+    const url = isAi ? buildShareURL({ mode: 'ai' }) : buildShareURL();
+    let qrImg = '';
+    let qrErr = '';
+    try {
+      const qr = window.qrcode(0, 'L'); // 0 = 自动选择最小版本
+      qr.addData(url);
+      qr.make();
+      qrImg = qr.createDataURL(6, 10);
+    } catch (e) {
+      qrErr = U.errMsg(e) || '生成失败';
+    }
+
+    const introText = isAi
+      ? '患者/家属使用微信或相机扫码即可查看本次 AI 解读（含推荐方案）。建议通过<b>部署后的 http(s) 地址</b>分享，本地 file:// 链接手机无法访问。'
+      : '患者使用微信/相机扫码即可在手机上查看本报告（含智能运动方案）。建议通过<b>部署后的 http(s) 地址</b>分享，本地 file:// 链接手机无法访问。';
+    const body = `
+      <p class="text-muted" style="font-size:13px;line-height:1.7;">${introText}</p>
+      <div class="qr-box">
+        ${qrImg ? `<img src="${qrImg}" alt="QR" class="qr-img"/>` : `<div class="alert alert-warning" style="margin:0;">二维码生成失败（${U.esc(qrErr)}），请直接复制下方链接发送。</div>`}
+      </div>
+      <div class="form-group">
+        <label>分享链接（可复制发送给患者）</label>
+        <textarea class="form-control" id="share-url" rows="3" readonly>${U.esc(url)}</textarea>
+      </div>
+      <p class="text-muted" id="share-tip" style="font-size:12px;margin:6px 0 0;"></p>
+    `;
+
+    const { overlay, close } = U.modal({
+      title: isAi ? '📲 生成 AI 解读分享页' : '📲 生成患者分享二维码',
+      body,
+      width: '460px',
+      footer: `
+        <button class="btn btn-secondary" id="share-copy">复制链接</button>
+        ${qrImg ? '<button class="btn btn-primary" id="share-dl">下载二维码</button>' : ''}
+      `,
+      onMount(ov) {
+        const urlArea = ov.querySelector('#share-url');
+        ov.querySelector('#share-copy').onclick = async () => {
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(url);
+            } else {
+              urlArea.select(); document.execCommand('copy');
+            }
+            U.toast('链接已复制', 'success');
+          } catch (e) { urlArea.select(); U.toast('请手动复制选中文本', 'warning'); }
+        };
+        const dl = ov.querySelector('#share-dl');
+        if (dl) dl.onclick = () => {
+          const a = document.createElement('a');
+          a.href = qrImg; a.download = '患者报告二维码.png';
+          document.body.appendChild(a); a.click(); a.remove();
+          U.toast('二维码已下载', 'success');
+        };
+        const tip = ov.querySelector('#share-tip');
+        if (tip) {
+          if (url.length > 1800) tip.textContent = '提示：报告内容较多，链接较长，建议直接发送链接（二维码容量有限）。';
+          else if (location.protocol === 'file:') tip.textContent = '提示：当前为本地文件，二维码在手机上无法打开，请部署后使用。';
+        }
+      }
+    });
+    void overlay; void close;
+  }
+
+  window.Share = {
+    maybeRenderShare,
+    openQRModal,
+    openAIQRModal: function () { openQRModal({ mode: 'ai' }); },
+    buildShareURL,
+    decodeShare
+  };
+})();

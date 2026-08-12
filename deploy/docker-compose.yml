@@ -1,0 +1,39 @@
+# 鹊动后端 — docker-compose（容器化部署备选）
+#
+# 用法（构建上下文为仓库根目录）：
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#
+# 默认：容器只跑 Node 后端（监听 8080），前端与 HTTPS 建议由主机 nginx/Caddy 反代。
+# 反向代理配置见同目录 nginx-quedong.conf / Caddyfile，把反代目标改为
+#   proxy_pass http://127.0.0.1:8080;   # 容器已映射 8080 到主机
+# 即可。
+#
+# 数据持久化：data / media / backups 三个命名卷，容器重建不丢数据。
+
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: quedong-backend:latest
+    container_name: quedong-backend
+    restart: unless-stopped
+    env_file:
+      - ./quedong.env.example   # 上线前复制为 quedong.env 并填真实值（SECRET 等）
+    ports:
+      - "8080:8080"
+    volumes:
+      - appdata:/app/server/data
+      - appmedia:/app/server/media
+      - appbackups:/app/server/backups
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  appdata:
+  appmedia:
+  appbackups:

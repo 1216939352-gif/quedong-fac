@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: quedong-fac
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: npm install && npm --prefix server install --omit=dev
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      # PORT 由 Render 自动注入，无需手动设置；STATIC_DIR 默认即 <项目根>/_dl3，也无需改

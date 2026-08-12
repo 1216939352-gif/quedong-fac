@@ -1,0 +1,10 @@
+node_modules
+server/node_modules
+.git
+*.log
+server/logs
+server/backups
+server/data
+server/media
+.dockerignore
+Dockerfile

@@ -1,0 +1,44 @@
+# 鹊动后端 — Caddy 反代配置（自动 HTTPS / Let's Encrypt）
+#
+# Caddy 自动申请并续期证书，比 nginx+certbot 更省心。二选一即可（nginx 或 Caddy）。
+#
+# 使用：
+#   1) 安装 Caddy：https://caddyserver.com/docs/install
+#   2) 把 quedong.example.com 改成你的域名（A 记录已指向本机）
+#   3) 将本文件并入主 Caddyfile，或单独以：
+#      sudo caddy run --config /etc/caddy/quedong.Caddyfile --adapter caddyfile
+#      （生产建议用 systemd 托管 Caddy，并让它加载此配置）
+#
+# ⚠️ 同 nginx 版本：公网开放前请先完成「选项2：给 /api/sync、/api/media 加鉴权」。
+#    Caddy 下可用 basicauth 临时止损（见文末注释）。
+
+quedong.example.com {
+    encode gzip
+
+    # ── 后端 API：反代到本地 Node（保留 /api 前缀，后端按 /api/* 路由）──
+    handle /api/* {
+        reverse_proxy 127.0.0.1:8080 {
+            read_timeout 600s   # 媒体上传(≤200MB)放宽超时
+        }
+    }
+
+    # ── 前端静态资源 + SPA 回落 ──
+    handle {
+        root * /opt/quedong/frontend
+        file_server {
+            try_files {path} /index.html   # 哈希路由：文件不存在时回落 index.html
+        }
+    }
+}
+
+# ── 临时止损示例：仅允许指定账号访问未鉴权的同步/媒体接口 ──
+# 在上面的站点块内、handle /api/* 之前加入（密码用 `caddy hash-password` 生成）：
+#
+#   basicauth /api/sync* {
+#       clinic XYZ<hashed-password>
+#   }
+#   basicauth /api/media* {
+#       clinic XYZ<hashed-password>
+#   }
+#
+# 注意这只是网络层止损，真正的多用户鉴权仍需后端路由挂 authMiddleware（选项2）。

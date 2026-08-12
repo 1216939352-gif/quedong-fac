@@ -1,0 +1,18 @@
+# 鹊动后端 — Linux 自动备份（cron 片段）
+#
+# 安装：把下面一行加入 crontab
+#   sudo crontab -u quedong -e
+# 或写入 /etc/cron.d/quedong-backup（注意该文件需带用户字段，见下）
+#
+# 说明：
+#   - backup.js 为独立进程，直接打开 SQLite 做 VACUUM 备份 + 媒体目录拷贝 + manifest + 按份数清理
+#   - 必须在 /opt/quedong/server 目录下执行（脚本依赖 __dirname 定位 data/media/backups）
+#   - --keep=30 表示保留最近 30 份（约 30 天，每日一次时）
+
+# 方式 A：用户 crontab（推荐）
+15 3 * * * cd /opt/quedong/server && /usr/bin/node backup.js --keep=30 >> /opt/quedong/server/backups/backup.log 2>&1
+
+# 方式 B：/etc/cron.d/quedong-backup（文件内容如下，含用户字段与 PATH）
+# SHELL=/bin/bash
+# PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# 15 3 * * * quedong cd /opt/quedong/server && /usr/bin/node backup.js --keep=30 >> /opt/quedong/server/backups/backup.log 2>&1
