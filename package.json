@@ -3,12 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "description": "鹊动FAC功能评估与干预系统 — 单服务部署（后端 API + 前端静态托管）",
-  "workspaces": [
-    "server"
-  ],
   "scripts": {
-    "start": "node server/server.js",
-    "postinstall": "npm --prefix server install --omit=dev"
+    "start": "node --experimental-sqlite server/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "multer": "^2.2.0"
   },
   "engines": {
     "node": ">=22"
