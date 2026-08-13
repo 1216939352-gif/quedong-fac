@@ -1113,6 +1113,18 @@ function route() {
     if (typeof content === 'string') main.innerHTML = content;
     else if (content instanceof Node) { main.innerHTML = ''; main.appendChild(content); }
     main.scrollTop = 0;
+    // 渲染后钩子：供各模块向台账/看板页注入执行记录等区块（如训练方案执行记录）
+    if (typeof window.__onPageRendered === 'function') {
+      try { window.__onPageRendered({ hash, main }); } catch (e) { console.warn('__onPageRendered hook error', e); }
+    }
+    // 训练方案执行记录区块：扫描本页 [data-te-scope] 并异步填充
+    if (window.TrainingExecution && typeof window.TrainingExecution.fillAll === 'function') {
+      try { window.TrainingExecution.fillAll(main); } catch (e) { console.warn('TrainingExecution.fillAll error', e); }
+    }
+    // 大数据看板：训练方案执行情况·多维区块
+    if (window.TrainingExecution && typeof window.TrainingExecution.fillBigdata === 'function' && main.querySelector('[data-te-bd]')) {
+      try { window.TrainingExecution.fillBigdata(main); } catch (e) { console.warn('TrainingExecution.fillBigdata error', e); }
+    }
   }).catch(err => {
     console.error(err);
     main.innerHTML = `<div class="alert alert-danger"><div><strong>页面加载异常</strong>
@@ -1825,6 +1837,8 @@ Pages.dashboard = async function () {
     ${ptCardHost}
 
     ${ttCard('weight')}
+
+    ${window.TrainingExecution ? window.TrainingExecution.ledgerCard('weight') : ''}
 
     ${WF}
 

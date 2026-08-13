@@ -483,7 +483,7 @@
     wirePlanBodyRevert();
     const qrBtn = U.qs('#btn-plan-qr', wrap);
     if (qrBtn) qrBtn.onclick = () => {
-      if (window.Share && typeof Share.openQRModal === 'function') Share.openQRModal();
+      if (window.Share && typeof Share.openPlanQRModal === 'function') Share.openPlanQRModal({ scheme: 'weight' });
       else U.toast('分享组件未就绪', 'error');
     };
     const aiPlanBtn = U.qs('#btn-ai-plan', wrap);

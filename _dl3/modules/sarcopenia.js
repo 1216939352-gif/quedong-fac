@@ -580,6 +580,8 @@
 
       ${typeof window.TodayTodo === 'object' ? window.TodayTodo.renderCard('sarc', window.TodayTodo.buildSarc(all).items, window.TodayTodo.buildSarc(all).breakdown) : ''}
 
+      ${window.TrainingExecution ? window.TrainingExecution.ledgerCard('sarcopenia') : ''}
+
       <div class="sarc-stat-row">
         ${statMini('首诊登记人数', patients.length, '人', 'var(--primary)')}
         ${statMini('模块累计评估', all.length, '次', 'var(--info)')}
@@ -1982,7 +1984,7 @@
         U.qsa('.btn-share-sarc-qr', bodyEl).forEach(btn => {
           btn.onclick = () => {
             if (window.SarcShare && typeof SarcShare.snapshot === 'function') SarcShare.snapshot();
-            if (window.Share && typeof Share.openQRModal === 'function') Share.openQRModal();
+            if (window.Share && typeof Share.openPlanQRModal === 'function') Share.openPlanQRModal({ scheme: 'sarcopenia' });
             else U.toast('分享组件未就绪', 'error');
           };
         });
@@ -2029,7 +2031,7 @@
         U.qsa('.btn-share-sarc-qr', bodyEl).forEach(btn => {
           btn.onclick = () => {
             if (window.SarcShare && typeof SarcShare.snapshot === 'function') SarcShare.snapshot();
-            if (window.Share && typeof Share.openQRModal === 'function') Share.openQRModal();
+            if (window.Share && typeof Share.openPlanQRModal === 'function') Share.openPlanQRModal({ scheme: 'sarcopenia' });
             else U.toast('分享组件未就绪', 'error');
           };
         });

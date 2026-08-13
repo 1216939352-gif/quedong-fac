@@ -649,6 +649,9 @@
             <div class="bigdata-funnel-item"><span>肌力测评</span><b>${s.strengthPatients}</b></div>
             <div class="bigdata-funnel-item"><span>生成方案</span><b>${s.planDone}</b></div>
           </div>`, panel: pan.funnel, narrative:'业务漏斗各环节转化。' })}
-      </div>`;
+      </div>
+
+      <div id="te-bd-block" data-te-bd></div>
+    `;
   }
 })();

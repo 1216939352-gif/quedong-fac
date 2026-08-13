@@ -27,6 +27,35 @@
         ai: AppState.ai || {}
       };
     }
+    // 训练方案执行打卡（计划 kind）：携带动作清单与 scheme，供患者手机端每日打卡与数据回传
+    if (opts.mode === 'plan') {
+      const p0 = AppState.patient || {};
+      const scheme = opts.scheme === 'sarcopenia' ? 'sarcopenia' : 'weight';
+      let exercises = [];
+      let patient = { id: p0.id || '', name: p0.name || '', gender: p0.gender || '', age: p0.age || '' };
+      if (scheme === 'sarcopenia' && window.__sarcSharePayload && window.__sarcSharePayload.module === 'sarcopenia') {
+        const rec = window.__sarcSharePayload.rec || {};
+        exercises = collectSarcExercises(rec);
+        const sp = rec.patient || {};
+        patient = {
+          id: sp.id || rec.pid || rec.id || p0.id || '',
+          name: sp.name || rec.name || p0.name || '',
+          gender: sp.gender || '',
+          age: sp.age || ''
+        };
+      } else if (AppState.plan) {
+        exercises = collectPlanExercisesFlat(AppState.plan);
+      }
+      return {
+        v: 1,
+        kind: 'plan',
+        scheme: scheme,
+        pid: patient.id || (opts.pid || ''),
+        patient: patient,
+        exercises: exercises,
+        title: opts.title || (patient.name ? patient.name + ' 训练方案' : '训练方案')
+      };
+    }
     // 肌少症模块优先：外部已准备好快照
     if (window.__sarcSharePayload && window.__sarcSharePayload.module === 'sarcopenia') {
       var sp0 = window.__sarcSharePayload.rec || {};
@@ -343,6 +372,220 @@
     });
   }
 
+  /* ---------- 训练方案执行打卡：患者手机端 ---------- */
+  const CHECKIN_REASON_OPTIONS = [
+    { v: 'r1', t: '动作没看懂' },
+    { v: 'r2', t: '动作姿势难度大' },
+    { v: 'r3', t: '动作组数/次数多' },
+    { v: 'r4', t: '没有很好的场地/辅助道具' },
+    { v: 'r5', t: '疲劳发虚' }
+  ];
+  function checkinReasonText(v) {
+    const o = CHECKIN_REASON_OPTIONS.find(function (x) { return x.v === v; });
+    return o ? o.t : v;
+  }
+  // 体重管理方案：从 AppState.plan 抽取动作清单（含剂量）
+  function collectPlanExercisesFlat(plan) {
+    const out = [];
+    const pushEx = function (e, cat) {
+      const name = (e && (e.name || e.label)) || '';
+      if (!name) return;
+      const meta = [e.sets ? (e.sets + '组') : '', e.reps ? (e.reps + '次') : '', e.rest ? ('休息' + e.rest) : ''].filter(Boolean).join(' · ');
+      out.push({ id: (e.id || name), name: name, meta: meta, cat: cat, desc: (e.desc || e.description || e.note || '') });
+    };
+    ['resistance', 'balance', 'flexibility'].forEach(function (c) {
+      const arr = plan && plan[c] && plan[c].exercises;
+      if (Array.isArray(arr)) arr.forEach(function (e) { pushEx(e, c); });
+    });
+    if (plan && plan.device1RM && Array.isArray(plan.device1RM.exercises)) {
+      plan.device1RM.exercises.forEach(function (e) { pushEx(e, 'device'); });
+    }
+    if (plan && Array.isArray(plan.exercises)) {
+      plan.exercises.forEach(function (e) { pushEx(e, e.cat || 'general'); });
+    }
+    return out;
+  }
+  // 肌少症方案：从分享快照 rec.result.plan.home.exercisePlan 抽取动作（含 params 剂量）
+  function collectSarcExercises(rec) {
+    const out = [];
+    const ep = rec && rec.result && rec.result.plan && rec.result.plan.home && rec.result.plan.home.exercisePlan;
+    if (!ep) return out;
+    ['warmup', 'main', 'balance', 'aerobic', 'stretch'].forEach(function (g) {
+      const grp = ep[g];
+      if (grp && Array.isArray(grp.items)) grp.items.forEach(function (it) {
+        const name = (it && it.name) || '';
+        if (!name) return;
+        out.push({ id: name, name: name, meta: (it.params || ''), cat: g, desc: (it.keyPoints || it.desc || '') });
+      });
+    });
+    return out;
+  }
+
+  // 多选项原因弹窗（费力完成/未完成时触发）
+  function openCheckinReasonsModal(key, current, onConfirm) {
+    const selected = current.slice();
+    const body = '<p class="text-muted" style="font-size:13px;line-height:1.7;margin:0 0 12px;">请选择本次「' +
+      (state[key] && state[key].level === 'hard' ? '费力完成' : '未完成') + '」的主要原因（可多选）：</p>' +
+      '<div class="mplan-reasons-list">' +
+      CHECKIN_REASON_OPTIONS.map(function (o) {
+        const on = selected.indexOf(o.v) >= 0;
+        return '<label class="mplan-reason-item' + (on ? ' checked' : '') + '">' +
+          '<input type="checkbox" value="' + o.v + '"' + (on ? ' checked' : '') + '/>' +
+          '<span>' + U.esc(o.t) + '</span></label>';
+      }).join('') + '</div>';
+    const { overlay, close } = U.modal({
+      title: '补充原因',
+      body: body,
+      width: '440px',
+      footer: '<button class="btn btn-secondary" id="rm-cancel">取消</button><button class="btn btn-primary" id="rm-ok">确定</button>',
+      onMount(ov) {
+        ov.querySelectorAll('.mplan-reason-item input').forEach(function (cb) {
+          cb.onchange = function () {
+            cb.closest('.mplan-reason-item').classList.toggle('checked', cb.checked);
+            const i = selected.indexOf(cb.value);
+            if (cb.checked) { if (i < 0) selected.push(cb.value); }
+            else if (i >= 0) selected.splice(i, 1);
+          };
+        });
+        ov.querySelector('#rm-cancel').onclick = function () { if (typeof close === 'function') close(); };
+        ov.querySelector('#rm-ok').onclick = function () { onConfirm(selected.slice()); if (typeof close === 'function') close(); };
+      }
+    });
+    void overlay; void close;
+  }
+
+  // 患者手机端训练方案执行打卡页（免登录；复用 /s/<token> 或 ?share=）
+  async function renderMobilePlan(data) {
+    const app = U.qs('#app');
+    if (!app) return;
+    const pid = (data.pid) || (data.patient && data.patient.id) || 'anon';
+    const scheme = data.scheme === 'sarcopenia' ? 'sarcopenia' : 'weight';
+    const exercises = Array.isArray(data.exercises) ? data.exercises.map(function (e) {
+      return { id: (e.id || e.name || ''), name: (e.name || ''), meta: (e.meta || ''), cat: (e.cat || ''), desc: (e.desc || '') };
+    }) : [];
+    const pname = (data.patient && data.patient.name) || data.title || '患者';
+    const today = dateStr(new Date());
+    const state = {};
+    exercises.forEach(function (ex) { const k = ex.id || ex.name; state[k] = { level: '', reasons: [] }; });
+
+    app.innerHTML = '<div class="mplan-view"><div class="mplan-body"><div class="mplan-loading text-muted" style="padding:48px 16px;text-align:center;">正在加载您的训练方案…</div></div></div>';
+
+    // 预填今日已提交记录 + 汇总 KPI（后端开放接口，best-effort）
+    let existing = null, summary = null;
+    try {
+      const r = await fetch(checkinApiBase() + '/api/checkin?pid=' + encodeURIComponent(pid));
+      if (r.ok) { const j = await r.json(); if (j && Array.isArray(j.items)) { const t = j.items.find(function (x) { return x.date === today; }); if (t) existing = t; } }
+    } catch (e) {}
+    if (existing && Array.isArray(existing.items)) {
+      existing.items.forEach(function (it) {
+        const k = it.id || it.n; if (state[k]) { state[k].level = it.l || ''; state[k].reasons = Array.isArray(it.r) ? it.r : []; }
+      });
+    }
+    try {
+      const r2 = await fetch(checkinApiBase() + '/api/checkin/summary?pid=' + encodeURIComponent(pid) + '&days=7');
+      if (r2.ok) { const j = await r2.json(); if (j && j.ok) summary = j.summary; }
+    } catch (e) {}
+
+    function pill(k, level, label, cur) {
+      return '<button type="button" class="mplan-pill b-' + level + (cur === level ? ' active' : '') + '" data-key="' + U.esc(k) + '" data-level="' + level + '">' + label + '</button>';
+    }
+    function renderExList() {
+      if (!exercises.length) return '<div class="mplan-empty">医生尚未为您配置训练动作，请稍后与主治医师确认方案。</div>';
+      const catLabel = { resistance: '抗阻', balance: '平衡', flexibility: '柔韧', device: '器械', warmup: '热身', main: '主练', aerobic: '有氧', stretch: '拉伸', general: '' };
+      return exercises.map(function (ex) {
+        const k = ex.id || ex.name; const st = state[k]; const lv = st.level;
+        const reasonsTip = (lv === 'hard' || lv === 'none') && st.reasons.length
+          ? '<div class="mplan-reasons-tip">原因：' + st.reasons.map(checkinReasonText).join('、') + '</div>' : '';
+        return '<div class="mplan-ex" data-key="' + U.esc(k) + '">' +
+          '<div class="mplan-ex-head"><div class="mplan-ex-name">' + U.esc(ex.name) + '</div>' +
+          (catLabel[ex.cat] ? '<span class="mplan-ex-cat">' + U.esc(catLabel[ex.cat]) + '</span>' : '') + '</div>' +
+          (ex.meta ? '<div class="mplan-ex-meta">' + U.esc(ex.meta) + '</div>' : '') +
+          '<div class="mplan-pills">' + pill(k, 'easy', '轻松完成', lv) + pill(k, 'normal', '一般完成', lv) + pill(k, 'hard', '费力完成', lv) + pill(k, 'none', '未完成', lv) + '</div>' +
+          reasonsTip + '</div>';
+      }).join('');
+    }
+    function kpiCard(label, val, unit) {
+      return '<div class="mplan-kpi-card"><div class="mplan-kpi-val">' + val + '<span class="mplan-kpi-unit">' + unit + '</span></div><div class="mplan-kpi-label">' + label + '</div></div>';
+    }
+    function renderKpi() {
+      return '<div class="mplan-kpi">' +
+        kpiCard('连续打卡', summary ? summary.streak : '—', '天') +
+        kpiCard('完成率', summary ? summary.completionRate : '—', '%') +
+        kpiCard('平均完成度', summary ? summary.avgScore : '—', '/4') + '</div>';
+    }
+    function renderTrend() {
+      if (!summary || !Array.isArray(summary.trend)) return '';
+      const max = Math.max(1, summary.trend.reduce(function (m, x) { return Math.max(m, x.total); }, 0));
+      const cells = summary.trend.map(function (d) {
+        const h = Math.round((d.total / max) * 100);
+        return '<div class="mplan-trend-cell"><div class="mplan-trend-bar-wrap"><div class="mplan-trend-bar ' + (d.completed > 0 ? 'on' : '') + '" style="height:' + h + '%"></div></div><div class="mplan-trend-d">' + U.esc(d.date.slice(5)) + '</div></div>';
+      }).join('');
+      return '<div class="mplan-trend"><div class="mplan-section-title">近 7 天打卡</div><div class="mplan-trend-bars">' + cells + '</div></div>';
+    }
+
+    app.innerHTML =
+      '<div class="mplan-view">' +
+        '<div class="mplan-topbar no-print">' +
+          '<div class="mplan-brand"><span class="mplan-dot"></span>' + U.esc((window.CONST && CONST.SYSTEM_NAME) || '鹊动') + ' · 训练方案执行打卡</div>' +
+        '</div>' +
+        '<div class="mplan-body" id="mplan-body">' +
+          '<div class="mplan-patient"><div class="mplan-patient-name">' + U.esc(pname) + '</div>' +
+          '<div class="mplan-patient-tag">' + (scheme === 'sarcopenia' ? '肌少症 · 居家训练' : '体重管理 · 训练方案') + '</div></div>' +
+          renderKpi() + renderTrend() +
+          '<div class="mplan-section-title">今日训练（' + today + '）</div>' +
+          '<div class="mplan-ex-list" id="mplan-ex-list">' + renderExList() + '</div>' +
+          '<div class="mplan-foot no-print">请为每项动作选择完成度；选择「费力完成 / 未完成」可补充原因，便于医生为您调整方案。</div>' +
+        '</div>' +
+        '<div class="mplan-submit-bar no-print"><button class="btn btn-primary mplan-submit" id="mplan-submit">提交今日打卡</button></div>' +
+      '</div>';
+
+    const list = U.qs('#mplan-ex-list', app);
+    function renderReasonsTip(exEl, k) {
+      const lv = state[k].level;
+      let tipEl = exEl.querySelector('.mplan-reasons-tip');
+      if ((lv === 'hard' || lv === 'none') && state[k].reasons.length) {
+        const html = '原因：' + state[k].reasons.map(checkinReasonText).join('、');
+        if (tipEl) tipEl.textContent = html;
+        else { tipEl = document.createElement('div'); tipEl.className = 'mplan-reasons-tip'; tipEl.textContent = html; exEl.appendChild(tipEl); }
+      } else if (tipEl) tipEl.remove();
+    }
+    list.addEventListener('click', function (ev) {
+      const btn = ev.target.closest('.mplan-pill'); if (!btn) return;
+      const k = btn.getAttribute('data-key'); const lv = btn.getAttribute('data-level');
+      state[k].level = lv;
+      const exEl = btn.closest('.mplan-ex');
+      exEl.querySelectorAll('.mplan-pill').forEach(function (p) { p.classList.toggle('active', p === btn); });
+      if (lv === 'hard' || lv === 'none') {
+        openCheckinReasonsModal(k, state[k].reasons.slice(), function (reasons) { state[k].reasons = reasons; renderReasonsTip(exEl, k); });
+      } else { state[k].reasons = []; renderReasonsTip(exEl, k); }
+    });
+
+    U.qs('#mplan-submit', app).onclick = async function () {
+      const items = exercises.map(function (ex) {
+        const k = ex.id || ex.name; const st = state[k];
+        return { id: ex.id || ex.name, n: ex.name, m: ex.meta || '', l: st.level || 'none', r: (st.level === 'hard' || st.level === 'none') ? st.reasons : [] };
+      });
+      if (items.some(function (it) { return !it.l; })) { U.toast('请为每项动作选择完成度', 'warning'); return; }
+      const btn = this; btn.disabled = true; U.toast('正在提交…', 'info');
+      try {
+        const r = await fetch(checkinApiBase() + '/api/checkin', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pid: pid, date: today, scheme: scheme, items: items })
+        });
+        if (r.ok) {
+          U.toast('今日打卡已提交，感谢配合！', 'success');
+          try {
+            const r2 = await fetch(checkinApiBase() + '/api/checkin/summary?pid=' + encodeURIComponent(pid) + '&days=7');
+            if (r2.ok) { const j = await r2.json(); if (j && j.ok) summary = j.summary; }
+          } catch (e) {}
+          const kpiWrap = U.qs('.mplan-kpi', app); if (kpiWrap) kpiWrap.outerHTML = renderKpi();
+          const trendWrap = U.qs('.mplan-trend', app); if (trendWrap) trendWrap.outerHTML = renderTrend();
+        } else U.toast('提交失败，请重试', 'error');
+      } catch (e) { U.toast('网络异常，提交失败', 'error'); }
+      finally { btn.disabled = false; }
+    };
+  }
+
   /* 由 app.js 的 init() 在最早阶段调用：若存在 ?share= 则渲染只读视图并拦截登录 */
   function maybeRenderShare() {
     const params = new URLSearchParams(location.search);
@@ -354,6 +597,7 @@
       if (app) app.innerHTML = '<div class="mreport-view"><div class="mreport-body"><div class="alert alert-danger">分享链接已损坏或已失效，请向您的主治医师重新获取。</div></div></div>';
       return true;
     }
+    if (data.kind === 'plan') { renderMobilePlan(data); return true; }
     applyToAppState(data);
     renderMobileReport(data);
     return true;
@@ -399,6 +643,7 @@
       else {
         const j = await r.json();
         if (j && j.ok && j.data) {
+          if (j.data.kind === 'plan') { renderMobilePlan(j.data); return true; }
           applyToAppState(j.data);
           renderMobileReport(j.data);
           return true;
@@ -417,6 +662,7 @@
   async function openQRModal(opts) {
     opts = opts || {};
     var isAi = opts.mode === 'ai';
+    var isPlan = opts.mode === 'plan';
     if (typeof window.qrcode !== 'function') {
       U.toast('二维码组件未加载，无法生成', 'error');
       return;
@@ -425,7 +671,7 @@
     let created = null;
     try { created = await createShareToken(opts); } catch (e) { created = null; }
     const usingShort = !!(created && created.url);
-    const url = usingShort ? created.url : (isAi ? buildShareURL({ mode: 'ai' }) : buildShareURL());
+    const url = usingShort ? created.url : (isAi ? buildShareURL({ mode: 'ai' }) : isPlan ? buildShareURL({ mode: 'plan', scheme: opts.scheme, title: opts.title }) : buildShareURL());
     let qrImg = '';
     let qrErr = '';
     try {
@@ -440,6 +686,8 @@
     const introText = (usingShort ? '已生成<b>服务端短链接</b>（可撤销、链接短更易扫描）。' : '已使用本地短链分享（未连接服务端，链接较长）。')
       + (isAi
       ? '患者/家属使用微信或相机扫码即可查看本次 AI 解读（含推荐方案）。建议通过<b>部署后的 http(s) 地址</b>分享。'
+      : isPlan
+      ? '患者/家属使用微信或相机扫码即可在手机上查看您的训练方案并每日打卡，数据将回传至系统供您查看。建议通过<b>部署后的 http(s) 地址</b>分享。'
       : '患者使用微信/相机扫码即可在手机上查看本报告（含智能运动方案）。建议通过<b>部署后的 http(s) 地址</b>分享。');
     const body = `
       <p class="text-muted" style="font-size:13px;line-height:1.7;">${introText}</p>
@@ -454,7 +702,7 @@
     `;
 
     const { overlay, close } = U.modal({
-      title: isAi ? '📲 生成 AI 解读分享页' : '📲 生成患者分享二维码',
+      title: isPlan ? '📲 生成训练打卡分享二维码' : (isAi ? '📲 生成 AI 解读分享页' : '📲 生成患者分享二维码'),
       body,
       width: '460px',
       footer: `
@@ -507,6 +755,8 @@
     maybeRenderByPath,
     openQRModal,
     openAIQRModal: function () { openQRModal({ mode: 'ai' }); },
+    openPlanQRModal: function (opts) { openQRModal(Object.assign({ mode: 'plan' }, opts || {})); },
+    renderMobilePlan,
     buildShareURL,
     decodeShare,
     createShareToken

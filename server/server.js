@@ -192,6 +192,13 @@ registerMigration('v3_share_tokens', function (db) {
 `);
 });
 
+// v4: 训练打卡升级——增加 scheme 维度（weight / sarcopenia），使两套台账的执行记录可分维度聚合
+registerMigration('v4_checkins_scheme', function (db) {
+  try {
+    db.exec('ALTER TABLE checkins ADD COLUMN scheme TEXT');
+  } catch (e) { /* 字段已存在则忽略 */ }
+});
+
 // 执行全部未应用的迁移
 function runMigrations(database) {
   database.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -310,28 +317,182 @@ require('./ai-routes')(app, db, verifyToken);
 // 健康检查（nssm / 监控轮询用）
 app.get('/health', (req, res) => res.json({ ok: true, ts: Date.now(), static: STATIC_DIR }));
 
-// 患者端训练打卡同步（同源开放：同一分享链接在任意设备打卡即共享）
-// GET /api/checkin?pid=<pid> -> {ok, items:[{date, items}]}
-// POST /api/checkin {pid, date, items} -> 覆盖写入当日打卡
+// ── 患者端训练打卡同步（同源开放：同一分享链接在任意设备打卡即共享）──
+// GET  /api/checkin?pid=<pid>            -> {ok, items:[{date, items, scheme}]}
+// POST /api/checkin {pid, date, scheme, items} -> 覆盖写入当日打卡（items 为对象数组 {id,n,m,l,r}）
+// GET  /api/checkin/summary?pid=<pid>|all=1&days=N
+//      -> 多维聚合：levelDist / reasonDist / completionRate / avgScore / streak / trend
+const CHECKIN_LEVELS = ['easy', 'normal', 'hard', 'none'];
+const CHECKIN_LEVEL_SCORE = { easy: 4, normal: 3, hard: 2, none: 1 };
+const CHECKIN_REASONS = ['r1', 'r2', 'r3', 'r4', 'r5'];
+function safeParseItems(s) {
+  try { const v = JSON.parse(s || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+}
+function ymd(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
+}
+// 把任意来源的 items 规整为 {id, n, m, l, r}
+function normalizeCheckinItem(it) {
+  if (typeof it === 'string') return { id: it, n: it, m: '', l: 'easy', r: [] };
+  const o = (it && typeof it === 'object') ? it : {};
+  const l = CHECKIN_LEVELS.includes(o.l) ? o.l : 'none';
+  let r = Array.isArray(o.r) ? o.r : [];
+  r = r.map(function (x) {
+    if (typeof x === 'number') return 'r' + x;
+    const s = String(x).trim();
+    if (/^\d$/.test(s)) return 'r' + s;
+    if (/^r\d$/.test(s)) return s;
+    // 兼容中文序号
+    const idx = ['动作没看懂', '动作姿势难度大', '动作组数/次数多', '没有很好的场地/辅助道具', '疲劳发虚'].indexOf(s);
+    return idx >= 0 ? 'r' + (idx + 1) : null;
+  }).filter(Boolean);
+  return {
+    id: String(o.id != null ? o.id : ''),
+    n: String(o.n != null ? o.n : ''),
+    m: String(o.m != null ? o.m : ''),
+    l: l,
+    r: r
+  };
+}
+function computeCheckinSummary(rows, windowDays) {
+  const levelDist = { easy: 0, normal: 0, hard: 0, none: 0 };
+  const reasonDist = { r1: 0, r2: 0, r3: 0, r4: 0, r5: 0 };
+  let totalItems = 0, completedItems = 0, scoreSum = 0;
+  const dateSet = new Set();
+  for (const row of rows) {
+    if (!row.date) continue;
+    dateSet.add(row.date);
+    const items = Array.isArray(row.items) ? row.items : [];
+    for (const it of items) {
+      let l;
+      if (typeof it === 'string') l = 'easy';
+      else l = (it && CHECKIN_LEVEL_SCORE[it.l] ? it.l : 'none');
+      levelDist[l]++;
+      totalItems++;
+      if (l !== 'none') completedItems++;
+      scoreSum += CHECKIN_LEVEL_SCORE[l] || 1;
+      if (typeof it === 'object' && Array.isArray(it.r)) {
+        for (const x of it.r) {
+          const key = String(x).startsWith('r') ? x : ('r' + x);
+          if (reasonDist[key] !== undefined) reasonDist[key]++;
+        }
+      }
+    }
+  }
+  const days = dateSet.size;
+  const completionRate = totalItems ? Math.round((completedItems / totalItems) * 100) : 0;
+  const avgScore = totalItems ? Math.round((scoreSum / totalItems) * 100) / 100 : 0;
+  // 连续打卡：以最新打卡日倒推连续天数
+  let streak = 0;
+  if (dateSet.size) {
+    let max = null;
+    dateSet.forEach(d => { if (!max || d > max) max = d; });
+    let cur = new Date(max + 'T00:00:00');
+    while (dateSet.has(ymd(cur))) { streak++; cur.setDate(cur.getDate() - 1); }
+  }
+  // 趋势：最近 windowDays 天逐日分布
+  const trend = [];
+  const today = new Date();
+  for (let i = windowDays - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const ds = ymd(d);
+    const bucket = { date: ds, total: 0, easy: 0, normal: 0, hard: 0, none: 0, completed: 0 };
+    for (const row of rows) {
+      if (row.date !== ds) continue;
+      const items = Array.isArray(row.items) ? row.items : [];
+      for (const it of items) {
+        let l = (typeof it === 'string') ? 'easy' : (it && CHECKIN_LEVEL_SCORE[it.l] ? it.l : 'none');
+        bucket[l]++; bucket.total++;
+        if (l !== 'none') bucket.completed++;
+      }
+    }
+    trend.push(bucket);
+  }
+  return {
+    records: rows.length,
+    days,
+    completionRate,
+    avgScore,
+    streak,
+    levelDist,
+    reasonDist,
+    totalItems,
+    completedItems,
+    trend
+  };
+}
+
 app.get('/api/checkin', (req, res) => {
   const pid = (req.query.pid || '').toString().slice(0, 128);
   if (!pid) return res.status(400).json({ error: '缺少 pid' });
   try {
-    const rows = db.prepare('SELECT date, items FROM checkins WHERE pid = ? ORDER BY date DESC LIMIT 60').all(pid);
-    res.json({ ok: true, items: rows.map(r => ({ date: r.date, items: JSON.parse(r.items || '[]') })) });
+    const rows = db.prepare('SELECT date, items, scheme FROM checkins WHERE pid = ? ORDER BY date DESC LIMIT 60').all(pid);
+    res.json({
+      ok: true,
+      items: rows.map(r => ({ date: r.date, items: safeParseItems(r.items), scheme: r.scheme || '' }))
+    });
   } catch (e) { res.status(500).json({ error: '查询失败' }); }
 });
+
 app.post('/api/checkin', (req, res) => {
   const b = req.body || {};
   const pid = (b.pid || '').toString().slice(0, 128);
   const date = (b.date || '').toString().slice(0, 24);
-  const items = Array.isArray(b.items) ? b.items.slice(0, 200) : [];
+  const scheme = (b.scheme === 'weight' || b.scheme === 'sarcopenia') ? b.scheme : '';
+  let items = Array.isArray(b.items) ? b.items.slice(0, 300) : [];
+  items = items.map(normalizeCheckinItem);
   if (!pid || !date) return res.status(400).json({ error: '缺少 pid/date' });
   try {
-    db.prepare(`INSERT INTO checkins (pid, date, items, updated_at) VALUES (?,?,?,datetime('now'))
-      ON CONFLICT(pid, date) DO UPDATE SET items = excluded.items, updated_at = datetime('now')`).run(pid, date, JSON.stringify(items));
+    db.prepare(`INSERT INTO checkins (pid, date, items, scheme, updated_at) VALUES (?,?,?,?,datetime('now'))
+      ON CONFLICT(pid, date) DO UPDATE SET items = excluded.items, scheme = excluded.scheme, updated_at = datetime('now')`)
+      .run(pid, date, JSON.stringify(items), scheme);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: '写入失败' }); }
+});
+
+// 多维汇总：支持单患者（pid）或全员（all=1）
+app.get('/api/checkin/summary', (req, res) => {
+  const pid = (req.query.pid || '').toString().slice(0, 128);
+  const all = req.query.all === '1' || req.query.all === 1;
+  const days = Math.min(Math.max(parseInt(req.query.days || '7', 10) || 7, 1), 30);
+  const scope = (req.query.scope === 'weight' || req.query.scope === 'sarcopenia') ? req.query.scope : '';
+  if (!pid && !all) return res.status(400).json({ error: '缺少 pid 或 all 参数' });
+  try {
+    let raw;
+    if (all) raw = db.prepare('SELECT pid, date, items, scheme FROM checkins ORDER BY date DESC').all();
+    else raw = db.prepare('SELECT pid, date, items, scheme FROM checkins WHERE pid = ? ORDER BY date DESC').all(pid);
+    let rows = raw.map(r => ({ pid: r.pid, date: r.date, items: safeParseItems(r.items), scheme: r.scheme || '' }));
+    if (scope) rows = rows.filter(r => r.scheme === scope || (!r.scheme && scope === 'weight'));
+    const summary = computeCheckinSummary(rows, days);
+    summary.pid = pid || null;
+    summary.all = !!all;
+    res.json({ ok: true, summary });
+  } catch (e) { res.status(500).json({ error: '汇总失败' }); }
+});
+
+// 近期打卡明细记录（供医生端台账「训练方案执行记录」区块）
+// GET /api/checkin/records?all=1&scope=weight|sarcopenia&limit=N
+app.get('/api/checkin/records', (req, res) => {
+  const all = req.query.all === '1' || req.query.all === 1;
+  const scope = (req.query.scope === 'weight' || req.query.scope === 'sarcopenia') ? req.query.scope : '';
+  const limit = Math.min(Math.max(parseInt(req.query.limit || '30', 10) || 30, 1), 200);
+  if (!all) return res.status(400).json({ error: '需带 all=1' });
+  try {
+    let raw = db.prepare('SELECT pid, date, items, scheme, updated_at FROM checkins ORDER BY date DESC, updated_at DESC').all();
+    if (scope) raw = raw.filter(r => (r.scheme || '') === scope || (!r.scheme && scope === 'weight'));
+    const records = raw.slice(0, limit).map(r => ({
+      pid: r.pid,
+      date: r.date,
+      scheme: r.scheme || 'weight',
+      updated_at: r.updated_at,
+      items: safeParseItems(r.items)
+    }));
+    res.json({ ok: true, records });
+  } catch (e) { res.status(500).json({ error: '查询失败' }); }
 });
 
 // 报错接收（前端统一 SDK 落点，允许匿名，限流靠体量小）
