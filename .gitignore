@@ -10,6 +10,8 @@ server/backups/
 /data/
 /media/
 /backups/
+# 本地密钥备份（含真实 API key，切勿提交）
+railway_ai_env.txt
 *.db
 *.sqlite
 *.sqlite3

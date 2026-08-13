@@ -20,12 +20,34 @@
 const ai = require('./ai-config');
 const rag = require('./rag'); // 轻量检索增强（临床指引知识库）
 
-/** 统一超时 fetch */
+/* AI 外部调用 HTTP 代理支持：Railway 等海外部署访问国内模型 API（火山方舟/腾讯 MaaS）常因网络不通失败。
+   配置 AI_HTTP_PROXY（或 HTTPS_PROXY / HTTP_PROXY）后，所有云端/视觉/图像模型调用均经代理转发；
+   本地地址（localhost/127.0.0.1）不走代理，Ollama 本地模式不受影响。未配置则直连，行为与先前一致。 */
+let _proxyAgent = null;
+function isLocalUrl(u) {
+  return /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|\/|$)/i.test(u || '');
+}
+(function initProxy() {
+  const proxyUrl = process.env.AI_HTTP_PROXY || process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
+  if (!proxyUrl) return;
+  try {
+    const { ProxyAgent } = require('undici');
+    _proxyAgent = new ProxyAgent(proxyUrl);
+    const masked = proxyUrl.replace(/\/\/([^:@]+:)?[^@]+@/, '//***@');
+    console.log('[AI] 已启用 HTTP 代理转发模型调用:', masked);
+  } catch (e) {
+    console.warn('[AI] 代理初始化失败（需依赖 undici，已忽略，将直连）:', e.message);
+  }
+})();
+
+/** 统一超时 fetch（外部模型调用自动经代理，本地地址直连） */
 async function fetchWithTimeout(url, options, timeoutMs) {
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(), timeoutMs || ai.cfg.timeoutMs);
+  const opts = { ...options, signal: ac.signal };
+  if (_proxyAgent && !isLocalUrl(url)) opts.dispatcher = _proxyAgent;
   try {
-    return await fetch(url, { ...options, signal: ac.signal });
+    return await fetch(url, opts);
   } finally {
     clearTimeout(t);
   }
@@ -159,7 +181,7 @@ async function callCloudStream(messages, onDelta, ac, maxTokens, model) {
     const m = ai.findCloudModel(model) || {};
     const baseUrl = m.baseUrl || ai.cfg.cloud.baseUrl;
     const apiKey = m.apiKey || ai.cfg.cloud.apiKey;
-    const r = await fetch(baseUrl + '/chat/completions', {
+    const streamOpts = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -174,7 +196,9 @@ async function callCloudStream(messages, onDelta, ac, maxTokens, model) {
         stream: true,
       }),
       signal: ac.signal,
-    });
+    };
+    if (_proxyAgent && !isLocalUrl(baseUrl)) streamOpts.dispatcher = _proxyAgent;
+    const r = await fetch(baseUrl + '/chat/completions', streamOpts);
     if (!r.ok || !r.body) throw new Error('cloud ' + r.status);
     let finished = false;
     await readLines(r.body, (line) => {
