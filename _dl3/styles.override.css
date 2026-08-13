@@ -1736,3 +1736,85 @@ body { font-size: var(--fs-base); }
 .tt-info     { background: rgba(14, 165, 233, .13); color: #075985; }
 .tt-go { flex-shrink: 0; }
 .tt-more { margin-top: 12px; padding-top: 10px; text-align: center; font-size: 12.5px; color: var(--text-muted, #64748b); border-top: 1px dashed var(--border, #e2e8f0); }
+
+/* =====================================================================
+   手机端只读报告视图（.mreport-*）
+   替代旧 .share-* 移动端方案：单列、比例正确、仅报告 + 下载，
+   无训练打卡 / 无「返回登录」。桌面浏览器亦自动适配。
+   ===================================================================== */
+.mreport-view {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary, #f2f4f7);
+  font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif);
+}
+.mreport-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-card, #fff);
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+.mreport-brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #1f2937);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mreport-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--primary, #f2651e);
+  flex: none;
+}
+.mreport-actions {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+.mreport-actions .btn { white-space: nowrap; }
+.mreport-body {
+  flex: 1 0 auto;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 12px;
+  box-sizing: border-box;
+}
+.mreport-body .report-doc {
+  margin: 0 !important;
+  max-width: 100% !important;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06);
+  border-radius: var(--radius, 12px);
+  background: var(--bg-card, #fff);
+}
+.mreport-foot {
+  padding: 14px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary, #6b7280);
+  text-align: center;
+  background: var(--bg-card, #fff);
+  border-top: 1px solid var(--border-color, #e5e7eb);
+}
+@media print {
+  .mreport-topbar, .mreport-actions, .mreport-foot { display: none !important; }
+  .mreport-view { background: #fff; min-height: 0; display: block; }
+  .mreport-body { max-width: 100%; padding: 0; margin: 0; }
+  .no-print { display: none !important; }
+  body { background: #fff; }
+}

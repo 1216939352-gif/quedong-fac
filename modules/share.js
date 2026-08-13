@@ -224,111 +224,70 @@
     html += '<div class="share-ai-foot">鹊动小Qoo 辅助生成，须经专业人员确认</div></div>';
     return html;
   }
-  // AI 解读专属分享页（聚焦展示 AI 解读 + 方案，不含训练打卡）
-  function renderAiShell(app, data) {
-    var ai = data.ai || {};
-    var inner = '';
-    if (ai.interpret && ai.interpret.markdown) {
-      inner += '<div class="share-ai-block">' +
-        '<div class="share-ai-head"><span class="ai-icon-wrap">' + (window.qooIcon ? window.qooIcon('sm') : '') + '</span> 鹊动小Qoo AI 解读' +
-        (ai.interpret.provider ? ' <span class="share-ai-prov">· ' + U.esc(ai.interpret.provider) + '</span>' : '') + '</div>' +
-        '<div class="ai-md share-ai-md">' + mdLite(ai.interpret.markdown) + '</div>' +
-        '<div class="share-ai-foot">鹊动小Qoo 辅助生成，须经专业人员确认</div></div>';
-    }
-    if (ai.plan && (ai.plan.raw || ai.plan.plan)) {
-      var planRaw = ai.plan.raw || JSON.stringify(ai.plan.plan);
-      inner += '<div class="share-ai-block">' +
-        '<div class="share-ai-head"><span class="ai-icon-wrap">🏋️</span> 鹊动小Qoo 推荐方案' +
-        (ai.plan.provider ? ' <span class="share-ai-prov">· ' + U.esc(ai.plan.provider) + '</span>' : '') + '</div>' +
-        '<div class="ai-md share-ai-md">' + mdLite(planRaw) + '</div>' +
-        '<div class="share-ai-foot">鹊动小Qoo 辅助生成，须经专业人员确认</div></div>';
-    }
-    if (!inner) inner = '<div class="alert alert-warning">尚未生成 AI 解读，请先在医生端生成后再分享本页。</div>';
-    app.innerHTML =
-      '<div class="share-view">' +
-        '<div class="share-topbar no-print">' +
-          '<div class="share-brand"><span class="share-dot"></span>' + U.esc((window.CONST && CONST.SYSTEM_NAME) || '鹊动') + ' · AI 解读（只读分享）</div>' +
-          '<div class="topbar-actions">' +
-            '<button class="btn btn-primary btn-sm" id="share-print">📄 导出 PDF</button>' +
-            '<button class="btn btn-ghost btn-sm" id="share-back">返回登录</button>' +
-          '</div>' +
-        '</div>' +
-        '<div class="share-body share-body-ai" id="share-body">' + inner + '</div>' +
-        '<div class="share-foot no-print">本页为只读 AI 解读分享，可导出 PDF 留存或打印；所有结论须经专业人员确认。</div>' +
-      '</div>';
-    U.qs('#share-print', app).onclick = function () { window.print(); };
-    U.qs('#share-back', app).onclick = function () { location.href = location.pathname + location.hash; };
-  }
-
-  /* ---------- 只读分享视图（免登录 · 含训练打卡） ---------- */
-  function renderShareShell(data) {
+  /* ---------- 移动端只读报告视图（免登录 · 仅报告 + 下载，无打卡/无返回登录） ---------- */
+  function renderMobileReport(data) {
     const app = U.qs('#app');
     if (!app) return;
     const isAi = data && data.mode === 'ai';
-    if (isAi) { renderAiShell(app, data); return; }
     const isSarc = data && data.module === 'sarcopenia';
-    const pid = (data && data.patient && data.patient.id) || (data && data.sarcopenia && data.sarcopenia.id) || 'anon';
-    app.innerHTML = `
-      <div class="share-view">
-        <div class="share-topbar no-print">
-          <div class="share-brand">
-            <span class="share-dot"></span>${U.esc((window.CONST && CONST.SYSTEM_NAME) || '鹊动')} · 患者端（训练打卡）
-          </div>
-          <div class="topbar-actions">
-            <button class="btn btn-primary btn-sm" id="share-print">📄 导出 PDF</button>
-            <button class="btn btn-ghost btn-sm" id="share-back">返回登录</button>
-          </div>
-        </div>
-        <div class="share-body ${isSarc ? 'share-body-sarc' : ''}" id="share-body"></div>
-        <div class="share-foot no-print">本报告为只读分享，可导出 PDF 留存或打印；训练打卡记录保存在本机浏览器，仅供您本人查看与坚持。</div>
-      </div>`;
-    U.qs('#share-print', app).onclick = () => window.print();
-    U.qs('#share-back', app).onclick = () => { location.href = location.pathname + location.hash; };
-    const body = U.qs('#share-body', app);
-    const todayTasks = (window.buildTodayTasks ? window.buildTodayTasks() : '');
-    const historyHTML = buildCheckinHistoryHTML(pid);
-    const aiBlock = buildAiBlock(data.ai);
-    if (isSarc) {
-      body.innerHTML = historyHTML + todayTasks + aiBlock + (window.buildSarcReport ? window.buildSarcReport(data.sarcopenia) : '<div class="alert alert-warning">肌少症报告组件未就绪</div>');
+    const ai = data.ai || {};
+    let reportHTML;
+    if (isAi) {
+      reportHTML = ''; // AI 模式仅展示解读，不渲染完整报告
+    } else if (isSarc) {
+      reportHTML = window.buildSarcReport ? window.buildSarcReport(data.sarcopenia) : '<div class="alert alert-warning">肌少症报告组件未就绪</div>';
     } else {
-      body.innerHTML = historyHTML + todayTasks + aiBlock + (window.buildReportDoc ? window.buildReportDoc() : '<div class="alert alert-warning">报告组件未就绪</div>');
+      reportHTML = window.buildReportDoc ? window.buildReportDoc() : '<div class="alert alert-warning">报告组件未就绪</div>';
     }
+    const hasAi = !!(ai.interpret && ai.interpret.markdown) || !!(ai.plan && (ai.plan.raw || ai.plan.plan));
+    let aiBlock = hasAi ? buildAiBlock(ai) : '';
+    if (isAi && !aiBlock) aiBlock = '<div class="alert alert-warning">尚未生成 AI 解读，请先在医生端生成后再分享本页。</div>';
+    app.innerHTML =
+      '<div class="mreport-view">' +
+        '<div class="mreport-topbar no-print">' +
+          '<div class="mreport-brand"><span class="mreport-dot"></span>' + U.esc((window.CONST && CONST.SYSTEM_NAME) || '鹊动') + ' · 患者报告（只读）</div>' +
+          '<div class="mreport-actions">' +
+            '<button class="btn btn-primary btn-sm" id="mreport-save-img">🖼️ 保存图片</button>' +
+            '<button class="btn btn-ghost btn-sm" id="mreport-print">📄 导出 PDF</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="mreport-body" id="mreport-body">' + aiBlock + reportHTML + '</div>' +
+        '<div class="mreport-foot no-print">本报告为只读分享，仅供您本人查看与留存；所有结论须经专业人员确认。</div>' +
+      '</div>';
+    U.qs('#mreport-print', app).onclick = function () { window.print(); };
+    U.qs('#mreport-save-img', app).onclick = function () { saveReportAsImage(app); };
+  }
 
-    const todayStr = dateStr(new Date());
-    // 回填今日任务勾选状态 + 无任务占位
-    function applyTodayChecks() {
-      const items = body.querySelectorAll('.tt-item');
-      const checked = loadCheckin(pid, todayStr);
-      items.forEach(function (it, i) {
-        it.dataset.ck = (pid || 'anon') + ':' + i;
-        if (checked.has(it.dataset.ck)) it.classList.add('done'); else it.classList.remove('done');
-      });
-      if (items.length === 0) {
-        const ph = body.querySelector('#checkin-history');
-        if (ph && !body.querySelector('.checkin-empty')) ph.insertAdjacentHTML('afterend', '<div class="checkin-empty text-muted">今日暂无训练任务，方案更新后这里会出现可打卡的项目。</div>');
-      }
+  /* 将报告区域渲染为 PNG 图片并触发下载（html2canvas 缺失时回落复制链接） */
+  function saveReportAsImage(app) {
+    const target = U.qs('#mreport-body', app);
+    if (!target) return;
+    if (typeof window.html2canvas !== 'function') {
+      // 回落：复制当前链接，引导用户在浏览器中截图/保存
+      const url = location.href;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(
+            function () { U.toast('已复制链接，请在浏览器中打开后截图保存', 'success'); },
+            function () { U.toast('当前环境不支持保存图片，请使用浏览器截图', 'warning'); }
+          );
+        } else {
+          U.toast('当前环境不支持保存图片，请使用浏览器截图', 'warning');
+        }
+      } catch (e) { U.toast('当前环境不支持保存图片，请使用浏览器截图', 'warning'); }
+      return;
     }
-    function refreshHistory() {
-      const h = body.querySelector('#checkin-history');
-      if (h) h.outerHTML = buildCheckinHistoryHTML(pid);
-    }
-    // 点击今日任务 → 打卡（持久化本机 + 跨设备同步）
-    body.addEventListener('click', function (e) {
-      const it = e.target.closest('.tt-item');
-      if (!it) return;
-      const key = it.dataset.ck;
-      it.classList.toggle('done');
-      const set = loadCheckin(pid, todayStr);
-      if (it.classList.contains('done')) set.add(key); else set.delete(key);
-      saveCheckin(pid, todayStr, set);
-      refreshHistory();
-      syncCheckinToServer(pid, todayStr, set); // 无后端/离线时静默失败，本地已保存
+    U.toast('正在生成图片…', 'info');
+    window.html2canvas(target, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false }).then(function (canvas) {
+      const link = document.createElement('a');
+      link.download = '患者报告.png';
+      link.href = canvas.toDataURL('image/png');
+      document.body.appendChild(link); link.click(); link.remove();
+      U.toast('图片已生成，可保存至相册', 'success');
+    }).catch(function (e) {
+      console.warn('报告转图片失败', e);
+      U.toast('图片生成失败，请使用浏览器截图保存', 'error');
     });
-    applyTodayChecks();
-    // 跨设备同步：从后端拉取该患者打卡并合并到本机，再刷新视图
-    if (pid && pid !== 'anon') {
-      syncCheckinFromServer(pid).then(function () { refreshHistory(); applyTodayChecks(); });
-    }
   }
 
   /* 由 app.js 的 init() 在最早阶段调用：若存在 ?share= 则渲染只读视图并拦截登录 */
@@ -339,11 +298,11 @@
     const app = U.qs('#app');
     const data = decodeShare(p);
     if (!data) {
-      if (app) app.innerHTML = `<div class="share-view"><div class="share-body"><div class="alert alert-danger">分享链接已损坏或已失效，请向您的主治医师重新获取。</div></div></div>`;
+      if (app) app.innerHTML = '<div class="mreport-view"><div class="mreport-body"><div class="alert alert-danger">分享链接已损坏或已失效，请向您的主治医师重新获取。</div></div></div>';
       return true;
     }
     applyToAppState(data);
-    renderShareShell(data);
+    renderMobileReport(data);
     return true;
   }
 
@@ -377,7 +336,7 @@
     if (!m) return false;
     const token = m[1];
     const app = U.qs('#app');
-    if (app) app.innerHTML = '<div class="share-view"><div class="share-body"><div class="text-muted" style="padding:48px 16px;text-align:center;">正在加载您的分享报告…</div></div></div>';
+    if (app) app.innerHTML = '<div class="mreport-view"><div class="mreport-body"><div class="text-muted" style="padding:48px 16px;text-align:center;">正在加载您的分享报告…</div></div></div>';
     try {
       const r = await fetch(checkinApiBase() + '/api/share/' + encodeURIComponent(token));
       let msg;
@@ -388,15 +347,15 @@
         const j = await r.json();
         if (j && j.ok && j.data) {
           applyToAppState(j.data);
-          renderShareShell(j.data);
+          renderMobileReport(j.data);
           return true;
         }
         msg = '分享数据损坏，请向您的主治医师重新获取。';
       }
-      if (app) app.innerHTML = '<div class="share-view"><div class="share-body"><div class="alert alert-danger">' + U.esc(msg) + '</div></div></div>';
+      if (app) app.innerHTML = '<div class="mreport-view"><div class="mreport-body"><div class="alert alert-danger">' + U.esc(msg) + '</div></div></div>';
       return true;
     } catch (e) {
-      if (app) app.innerHTML = '<div class="share-view"><div class="share-body"><div class="alert alert-danger">网络异常，无法加载分享报告，请检查网络后重试。</div></div></div>';
+      if (app) app.innerHTML = '<div class="mreport-view"><div class="mreport-body"><div class="alert alert-danger">网络异常，无法加载分享报告，请检查网络后重试。</div></div></div>';
       return true;
     }
   }
