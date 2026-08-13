@@ -1,0 +1,43 @@
+name: Deploy to Cloud Server
+
+# 触发：push 到 main 自动部署；也可在 Actions 页手动触发（workflow_dispatch）。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 需要的仓库 Secrets（仓库 → Settings → Secrets and variables → Actions → New repository secret）：
+#   DEPLOY_HOST     云服务器公网 IP 或域名
+#   DEPLOY_USER     SSH 登录用户名（建议专用低权限用户，需有 docker 权限）
+#   DEPLOY_SSH_KEY  SSH 私钥（PEM 全文，对应服务器 ~/.ssh/authorized_keys 里的公钥）
+#   DEPLOY_PATH     服务器上项目目录，需已 `git clone` 本仓库且含 deploy/ 目录
+#
+# 服务器一次性前置（部署前在云服务器上做）：
+#   1) 安装 docker + docker compose 插件（compose v2，命令为 `docker compose`）
+#   2) git clone 本仓库到 DEPLOY_PATH（推荐用只读 deploy key 或凭据助手，确保 `git pull` 无交互）
+#   3) 复制 deploy/quedong.env.example → deploy/quedong.env 并填真实值（SECRET、AI 密钥等）
+#   4) 把 DEPLOY_USER 加入 docker 组（或脚本改用 sudo docker）
+#
+# 工作原理：仓库里已提交 _dl3/，git pull 即同步最新前端；`--build` 会把新 _dl3 打进镜像，
+#           与 Railway 的构建方式一致。反向代理（Caddy/nginx）+ 证书在宿主机配置，容器只跑 8080。
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            cd "${{ secrets.DEPLOY_PATH }}"
+            git pull origin main
+            docker compose -f deploy/docker-compose.yml up -d --build
+            docker image prune -f
