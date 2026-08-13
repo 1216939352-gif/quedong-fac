@@ -95,21 +95,25 @@ docker compose -f deploy/docker-compose.yml up -d --build
 
 ---
 
-## 6. ⚠️ 公网暴露前必做（重要）
+## 6. 公网暴露安全说明（鉴权已启用）
 
-后端 `/api/sync/*` 与 `/api/media/*` **目前未挂鉴权**（账号体系是 Phase 0 的尾巴）。
-直接公网开放 = 任何人都能读/写/删全部患者数据。
+后端 `/api/sync/*`、`/api/media/*`、`/api/ai/*` **已启用 Bearer 令牌鉴权**：`server.js` 经
+`app.use('/api/sync', authMiddleware)` 与 `app.use('/api/media', authMiddleware)` 统一守卫；
+前端 `sync.js` / `ai-reason.js` 在请求时自动携带登录令牌，无令牌即返回 **401**。
 
-在补齐「选项2：给这两个路由挂 `authMiddleware`（前端 `sync.js` 带 Bearer 令牌）」之前，
-至少启用下方**临时止损**之一：
+**结论：未登录 / 无令牌者无法读写任何患者数据，不存在"任何人可读写删"的裸奔风险。**
 
+仍须知悉的边界（非 bug，是设计取舍）：
+- **这是「共享诊所数据集」模型**：任何合法登录账号均可读写全部患者记录（按 `owner_id` 归属，
+  但不限制跨医生读取；管理员可见全部）。适合**单诊所内部多人共用**，但**不是多诊所 / 多租户隔离**。
+- 若要严格的机构间数据隔离，需在 `authMiddleware` 之后追加「按租户过滤」逻辑（当前未做）。
+- 默认管理员账号 `admin / admin123` 仍为弱口令，**上线前务必改密**（见下方清单）。
+
+纵深防御建议（仍推荐，进一步收窄攻击面）：
 - **nginx**：取消 `deploy/nginx-quedong.conf` 中 `location ~ ^/(api/sync|api/media)` 注释，
-  把 `allow 203.0.113.0/24` 换成你的公司出口 IP / VPN 网段。
-- **Caddy**：按 `deploy/Caddyfile` 文末示例加 `basicauth`。
-- **或**：仅在内网/VPN 内暴露，不要直接放公网。
-
-> 即便启用登录页（`/api/login` 已存在），同步接口也不校验令牌，所以**仅靠登录页不等于安全**。
-> 真正多用户隔离 = 选项2 的路由鉴权 + 数据归属过滤。
+  把 `allow 203.0.113.0/24` 换成你的公司出口 IP / VPN 网段，仅放行可信来源。
+- **Caddy**：按 `deploy/Caddyfile` 文末示例加 `basicauth`，做双因子兜底。
+- **或**：仅在内网 / VPN 内暴露，不要直接放公网。
 
 其它上线清单：
 - [ ] 改默认管理员密码 `admin / admin123`（当前无改密接口，需直连 DB 或补选项2）
@@ -163,6 +167,62 @@ sudo systemctl restart quedong-backend     # 重启（代码更新后）
 | `backup-cron.txt` | 每日备份 cron 片段 |
 | `setup-cloud.sh` | 目标机一键安装（装 Node + 用户 + 拷贝 + systemd + cron） |
 | `../server/tests/acceptance.js` | 跨机验收脚本（支持 `SERVER_URL`） |
+| `.github/workflows/deploy.yml` | GitHub Actions 自动部署（push main → SSH → docker compose up） |
+| `frpc.example.toml` | frp 客户端配置示例（本地服务器 → 公网穿透） |
+| `FRP.md` | 内网穿透部署说明（frps + frpc + 域名 + 微信 HTTPS 注意） |
 
 > 与 Windows 版的区别：Windows 用 `.bat` + `nssm/schtasks` 保活，Linux 用 `systemd` + `cron`；
 > 前端 SPA、后端逻辑、SQLite 数据模型三者完全一致，两份部署天然独立、数据不互通。
+
+---
+
+## 11. 国内云部署与 ICP 备案 + AI 直连
+
+### 11.1 推荐配置（2026 行情）
+
+| 项 | 推荐 | 说明 |
+|---|---|---|
+| 厂商 | 腾讯云「轻量应用服务器」2核2G，或阿里云 ECS 经济型 e 2核2G（「99 计划」续费同价） | 新客约 60–100 元/年 |
+| CPU/内存 | 2核2G 起步；想留余量选 2核4G | 当前负载极低，绰绰有余 |
+| 系统盘 | 40–60GB SSD | 代码+前端+SQLite 都很小 |
+| 系统 | Ubuntu 22.04/24.04 LTS | `setup-cloud.sh` 已验证 |
+| 地域 | 华南（广州）/华东（上海） | 离用户近 |
+| 带宽 | 轻量自带高带宽即可 | 报告页图文非视频流 |
+
+年成本 ≈ 服务器 100 + 域名 50 ≈ **150 元/年**。选**明写「续费同价」**的款，避开「首年 38、续费 800」的坑。
+
+### 11.2 为什么放国内云（关键好处）
+
+之前 AI（豆包 / 火山方 Ark）不可用，根因是 Railway 在海外、连不上国内模型节点。
+**部署到国内云后，后端直连 `ark.cn-beijing.volces.com` 等国内端点，无需 `AI_HTTP_PROXY` 代理**，
+AI 解读 / 方案生成即恢复可用（已实测火山方 Ark 端点返回 200）。
+
+### 11.3 ICP 备案（公网 80/443 绑域名必须）
+
+国内服务器用 80/443 绑域名**必须 ICP 备案**（否则无法公网访问），流程：
+
+1. 云厂商控制台提交备案（需身份证 / 人脸 / 短信核验），约 1–2 周；
+2. 备案期间可用临时方案：仅内网 / VPN 暴露，或走第 12 节的 frp（frps 机器也需备案域名）；
+3. 备案通过后，Caddy / nginx 反代 + 自动 HTTPS，绑定你的域名。
+
+### 11.4 部署步骤
+
+1. 买机器 → 控制台开 `22/80/443` 防火墙 → 设 SSH 密钥；
+2. 域名 A 记录指向服务器 IP；
+3. 登录服务器跑 `bash deploy/setup-cloud.sh`（装 Node + 建用户 + 拷代码 + systemd + 备份 cron）；
+4. 复制 `deploy/quedong.env.example` 为 `deploy/quedong.env`，填 `SECRET` / AI 密钥（**去掉 `AI_HTTP_PROXY`**）；
+5. （推荐容器化）`docker compose -f deploy/docker-compose.yml up -d --build`；
+6. Caddy / nginx 反代 `8080` → `443`，自动 HTTPS；
+7. 配 GitHub Actions 自动部署：仓库 `Settings` 加 `DEPLOY_HOST` / `DEPLOY_USER` / `DEPLOY_SSH_KEY` / `DEPLOY_PATH`
+   四个 Secrets，之后 `git push` 即自动上线（见 `.github/workflows/deploy.yml`）。
+
+---
+
+## 12. 内网穿透（frp）索引
+
+本地诊所服务器**无公网 IP / 未备案 / 临时需外网扫码**时，用 frp 把本地服务透传到公网：
+
+- 配置示例：`deploy/frpc.example.toml`
+- 完整说明：`deploy/FRP.md`（含 frps 搭建、本地 frpc、域名 DNS、微信 HTTPS 强制要求、安全提示）
+
+> 注：frp 只解决「可达性」，业务鉴权仍是 `server.js` 的 Bearer 令牌（第 6 节已启用），患者数据不会裸奔。

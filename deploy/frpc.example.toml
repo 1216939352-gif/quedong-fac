@@ -1,0 +1,33 @@
+# 鹊动本地服务器 → 公网 frps 内网穿透「客户端」配置（frp 0.50+ 的 TOML 格式）
+#
+# 适用场景：本地诊所服务器无公网 IP / 未做 ICP 备案 / 临时需要外网扫码访问。
+# 前提：你另有一台「有固定公网 IP 且已备案域名」的轻量云，上面跑 frps（服务端）。
+#
+# 安装 frpc：https://github.com/fatedier/frp/releases
+# 启动：     frpc -c frpc.toml
+# 完整说明：见同目录 FRP.md
+
+# ── 连接你的公网 frps ──────────────────────────────
+serverAddr = "frps.example.com"   # 改成你的 frps 公网域名或 IP
+serverPort = 7000                 # frps 监听端口（须与 frps.toml 一致）
+auth.token = "改成你的frps_token"  # 若 frps 未启用 token 鉴权，可删除此行
+
+# ── 方案 A（推荐）：本地已用 Caddy 提供 HTTPS(443) ──
+# 本地机已装 Caddy（见 deploy/Caddyfile）签发证书，frpc 仅做 443 透传。
+# 微信扫码必须经 HTTPS，此方案最省心（证书在本地 Caddy 管，frps 无需证书）。
+[[proxies]]
+name = "quedong-https"
+type = "https"
+customDomains = ["report.example.com"]   # 改成你的已备案域名
+localIP = "127.0.0.1"
+localPort = 443
+
+# ── 方案 B：本地只跑后端 8080（HTTP）──
+# 本地无反代，由 frps 侧提供 Web 入口。
+# ⚠️ 微信强制 HTTPS：需 frps 侧配置 vhostHTTPSPort + 证书（详见 FRP.md），否则微信打不开。
+# [[proxies]]
+# name = "quedong-web"
+# type = "http"
+# customDomains = ["report.example.com"]
+# localIP = "127.0.0.1"
+# localPort = 8080

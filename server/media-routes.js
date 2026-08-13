@@ -8,7 +8,7 @@
  *   - 元数据（哪些 slot 有、ext、size）写进 sync_items(collection='media', id=媒体命名空间键)
  *     → 自动进入 Phase 2 的 pull 水位线，客户端据此下载缺失媒体
  *
- * 注意：本路由与 /api/sync/* 一致，当前未鉴权（Phase 0 账号集成待做，接入后统一加 authMiddleware）。
+ * 注意：本路由与 /api/sync/* 一致，已由 server.js 经 app.use('/api/media', authMiddleware) 统一守卫，须持合法 Bearer 令牌（前端 sync.js 自动携带；无令牌返回 401）。
  */
 'use strict';
 

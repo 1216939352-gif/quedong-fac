@@ -17,7 +17,7 @@
 #
 # 不会做的事（需你后续手动，见 README）：
 #   - 申请 Let's Encrypt 证书 / 配置 nginx-Caddy（交互式，README 有命令）
-#   - 给 /api/sync、/api/media 加后端鉴权（选项2，公网暴露前必做）
+#   - [已完成] /api/sync、/api/media、/api/ai 的令牌鉴权已内置（server.js 的 authMiddleware），公网暴露可放心
 #
 set -euo pipefail
 
