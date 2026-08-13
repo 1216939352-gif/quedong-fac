@@ -248,14 +248,59 @@
           '<div class="mreport-brand"><span class="mreport-dot"></span>' + U.esc((window.CONST && CONST.SYSTEM_NAME) || '鹊动') + ' · 患者报告（只读）</div>' +
           '<div class="mreport-actions">' +
             '<button class="btn btn-primary btn-sm" id="mreport-save-img">🖼️ 保存图片</button>' +
-            '<button class="btn btn-ghost btn-sm" id="mreport-print">📄 导出 PDF</button>' +
+            '<button class="btn btn-secondary btn-sm" id="mreport-print">📄 导出 PDF</button>' +
           '</div>' +
         '</div>' +
         '<div class="mreport-body" id="mreport-body">' + aiBlock + reportHTML + '</div>' +
         '<div class="mreport-foot no-print">本报告为只读分享，仅供您本人查看与留存；所有结论须经专业人员确认。</div>' +
       '</div>';
-    U.qs('#mreport-print', app).onclick = function () { window.print(); };
+    U.qs('#mreport-print', app).onclick = function () { exportReportPDF(app); };
     U.qs('#mreport-save-img', app).onclick = function () { saveReportAsImage(app); };
+  }
+
+  /* 将报告区域渲染为多页 PDF 并触发下载（微信 WebView 中改为打开供手动保存） */
+  function exportReportPDF(app) {
+    const target = U.qs('#mreport-body', app);
+    if (!target) return;
+    if (typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF !== 'function' || typeof window.html2canvas !== 'function') {
+      // 兜底：原生打印（桌面端可用；移动端部分 WebView 不支持 window.print）
+      U.toast('正在调用系统打印…', 'info');
+      setTimeout(function () { window.print(); }, 200);
+      return;
+    }
+    U.toast('正在生成 PDF…', 'info');
+    const { jsPDF } = window.jspdf;
+    window.html2canvas(target, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false }).then(function (canvas) {
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const imgW = pageW;
+      const imgH = canvas.height * imgW / canvas.width;
+      let heightLeft = imgH;
+      let position = 0;
+      pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH);
+      heightLeft -= pageH;
+      while (heightLeft > 0) {
+        position -= pageH;
+        pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH);
+        heightLeft -= pageH;
+      }
+      const isWeChat = /micromessenger/i.test(navigator.userAgent || '');
+      if (isWeChat) {
+        const blob = pdf.output('blob');
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        U.toast('已打开 PDF，点右上角「…」可保存到手机', 'success');
+      } else {
+        pdf.save('患者报告.pdf');
+        U.toast('PDF 已生成并开始下载', 'success');
+      }
+    }).catch(function (e) {
+      console.warn('PDF 生成失败', e);
+      U.toast('PDF 生成失败，请改用「保存图片」', 'error');
+    });
   }
 
   /* 将报告区域渲染为 PNG 图片并触发下载（html2canvas 缺失时回落复制链接） */
@@ -279,9 +324,17 @@
     }
     U.toast('正在生成图片…', 'info');
     window.html2canvas(target, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false }).then(function (canvas) {
+      const dataUrl = canvas.toDataURL('image/png');
+      const isWeChat = /micromessenger/i.test(navigator.userAgent || '');
+      if (isWeChat) {
+        // 微信 WebView 会吞掉 <a download>，改为打开图片供长按保存到相册
+        window.open(dataUrl, '_blank');
+        U.toast('已打开图片，长按可保存到相册', 'success');
+        return;
+      }
       const link = document.createElement('a');
       link.download = '患者报告.png';
-      link.href = canvas.toDataURL('image/png');
+      link.href = dataUrl;
       document.body.appendChild(link); link.click(); link.remove();
       U.toast('图片已生成，可保存至相册', 'success');
     }).catch(function (e) {
