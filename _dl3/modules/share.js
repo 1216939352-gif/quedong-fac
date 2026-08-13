@@ -347,15 +347,73 @@
     return true;
   }
 
+  /* ---------- 服务端短链令牌（方案 B）：医生端创建、患者端按路径读取 ---------- */
+  // 创建分享令牌：成功返回 { token, url }；无后端/未登录/失败返回 null（调用方回落 base64）
+  async function createShareToken(opts) {
+    opts = opts || {};
+    if (!window.QDAuth || !window.QDAuth.authHeaders) return null;
+    const headers = window.QDAuth.authHeaders();
+    if (!headers.Authorization) return null; // 未登录（本地离线）直接用 base64
+    const data = snapshotShareData(opts);
+    const title = opts.title
+      || (data.patient && data.patient.name ? data.patient.name + ' 报告' : '')
+      || (data.module === 'sarcopenia' ? '肌少症报告' : '患者报告');
+    try {
+      const r = await fetch(checkinApiBase() + '/api/share', {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, headers),
+        body: JSON.stringify({ data: data, title: title })
+      });
+      if (!r.ok) return null; // 401/网络/无此接口 → 回落
+      const j = await r.json();
+      if (j && j.ok && j.url) return { token: j.token, url: j.url };
+      return null;
+    } catch (e) { return null; }
+  }
+
+  // 患者端：若当前路径为 /s/<token> 则拉取并渲染只读报告（返回 true 表示已接管页面）
+  async function maybeRenderByPath() {
+    const m = location.pathname.match(/\/s\/([A-Za-z0-9_-]{8,})/);
+    if (!m) return false;
+    const token = m[1];
+    const app = U.qs('#app');
+    if (app) app.innerHTML = '<div class="share-view"><div class="share-body"><div class="text-muted" style="padding:48px 16px;text-align:center;">正在加载您的分享报告…</div></div></div>';
+    try {
+      const r = await fetch(checkinApiBase() + '/api/share/' + encodeURIComponent(token));
+      let msg;
+      if (r.status === 404) msg = '分享链接不存在或已失效，请向您的主治医师重新获取。';
+      else if (r.status === 410) msg = '分享链接已过期，请向您的主治医师重新获取。';
+      else if (!r.ok) msg = '分享报告加载失败，请稍后重试或联系您的主治医师。';
+      else {
+        const j = await r.json();
+        if (j && j.ok && j.data) {
+          applyToAppState(j.data);
+          renderShareShell(j.data);
+          return true;
+        }
+        msg = '分享数据损坏，请向您的主治医师重新获取。';
+      }
+      if (app) app.innerHTML = '<div class="share-view"><div class="share-body"><div class="alert alert-danger">' + U.esc(msg) + '</div></div></div>';
+      return true;
+    } catch (e) {
+      if (app) app.innerHTML = '<div class="share-view"><div class="share-body"><div class="alert alert-danger">网络异常，无法加载分享报告，请检查网络后重试。</div></div></div>';
+      return true;
+    }
+  }
+
   /* ---------- 医生端：生成分享二维码弹窗 ---------- */
-  function openQRModal(opts) {
+  async function openQRModal(opts) {
     opts = opts || {};
     var isAi = opts.mode === 'ai';
     if (typeof window.qrcode !== 'function') {
       U.toast('二维码组件未加载，无法生成', 'error');
       return;
     }
-    const url = isAi ? buildShareURL({ mode: 'ai' }) : buildShareURL();
+    // 方案 B：优先走服务端短链令牌（链接短、可撤销、PHI 不出服务端）；失败回落本地 base64
+    let created = null;
+    try { created = await createShareToken(opts); } catch (e) { created = null; }
+    const usingShort = !!(created && created.url);
+    const url = usingShort ? created.url : (isAi ? buildShareURL({ mode: 'ai' }) : buildShareURL());
     let qrImg = '';
     let qrErr = '';
     try {
@@ -367,9 +425,10 @@
       qrErr = U.errMsg(e) || '生成失败';
     }
 
-    const introText = isAi
-      ? '患者/家属使用微信或相机扫码即可查看本次 AI 解读（含推荐方案）。建议通过<b>部署后的 http(s) 地址</b>分享，本地 file:// 链接手机无法访问。'
-      : '患者使用微信/相机扫码即可在手机上查看本报告（含智能运动方案）。建议通过<b>部署后的 http(s) 地址</b>分享，本地 file:// 链接手机无法访问。';
+    const introText = (usingShort ? '已生成<b>服务端短链接</b>（可撤销、链接短更易扫描）。' : '已使用本地短链分享（未连接服务端，链接较长）。')
+      + (isAi
+      ? '患者/家属使用微信或相机扫码即可查看本次 AI 解读（含推荐方案）。建议通过<b>部署后的 http(s) 地址</b>分享。'
+      : '患者使用微信/相机扫码即可在手机上查看本报告（含智能运动方案）。建议通过<b>部署后的 http(s) 地址</b>分享。');
     const body = `
       <p class="text-muted" style="font-size:13px;line-height:1.7;">${introText}</p>
       <div class="qr-box">
@@ -389,6 +448,7 @@
       footer: `
         <button class="btn btn-secondary" id="share-copy">复制链接</button>
         ${qrImg ? '<button class="btn btn-primary" id="share-dl">下载二维码</button>' : ''}
+        ${usingShort ? '<button class="btn btn-danger" id="share-revoke">撤销此链接</button>' : ''}
       `,
       onMount(ov) {
         const urlArea = ov.querySelector('#share-url');
@@ -409,6 +469,17 @@
           document.body.appendChild(a); a.click(); a.remove();
           U.toast('二维码已下载', 'success');
         };
+        const rev = ov.querySelector('#share-revoke');
+        if (rev) rev.onclick = async () => {
+          if (!window.confirm('撤销后此分享链接立即失效，患者将无法再访问。确定撤销？')) return;
+          try {
+            const rr = await fetch(checkinApiBase() + '/api/share/' + encodeURIComponent(created.token), {
+              method: 'DELETE', headers: (window.QDAuth ? window.QDAuth.authHeaders() : {})
+            });
+            if (rr.ok) { U.toast('分享链接已撤销', 'success'); if (typeof close === 'function') close(); }
+            else U.toast('撤销失败，请稍后重试', 'error');
+          } catch (e) { U.toast('撤销失败，请稍后重试', 'error'); }
+        };
         const tip = ov.querySelector('#share-tip');
         if (tip) {
           if (url.length > 1800) tip.textContent = '提示：报告内容较多，链接较长，建议直接发送链接（二维码容量有限）。';
@@ -421,9 +492,11 @@
 
   window.Share = {
     maybeRenderShare,
+    maybeRenderByPath,
     openQRModal,
     openAIQRModal: function () { openQRModal({ mode: 'ai' }); },
     buildShareURL,
-    decodeShare
+    decodeShare,
+    createShareToken
   };
 })();

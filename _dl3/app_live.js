@@ -1095,6 +1095,8 @@ async function init() {
   initTheme();
   // 患者只读分享链接优先：存在 ?share= 则渲染只读视图并跳过登录
   if (window.Share && window.Share.maybeRenderShare()) return;
+  // 患者扫码进入 /s/<token> 短链：从服务端拉取只读报告并跳过登录
+  if (window.Share && await window.Share.maybeRenderByPath()) return;
   const sess = loadSession();
   if (sess && sess.username) {
     try {

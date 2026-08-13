@@ -176,6 +176,22 @@ registerMigration('v2_users_must_change_pwd', function (db) {
   } catch (e) { /* 字段已存在则忽略 */ }
 });
 
+// v3: 患者扫码查看报告——服务端短链令牌（替代把整份报告 base64 塞进 URL 的方案）
+// token 不可枚举；data_json 落库，URL 仅携带 token；支持公开读取 + 归属 + 撤销 + 过期
+registerMigration('v3_share_tokens', function (db) {
+  db.exec(`
+  CREATE TABLE IF NOT EXISTS share_tokens (
+    token TEXT PRIMARY KEY,
+    owner_id TEXT,
+    title TEXT,
+    data_json TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    expires_at TEXT,
+    views INTEGER NOT NULL DEFAULT 0
+  );
+`);
+});
+
 // 执行全部未应用的迁移
 function runMigrations(database) {
   database.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -341,6 +357,81 @@ app.post('/api/err-report', (req, res) => {
 app.get('/api/err-report', authMiddleware, adminOnly, (req, res) => {
   const rows = db.prepare('SELECT * FROM errors ORDER BY id DESC LIMIT 200').all();
   res.json({ count: rows.length, rows });
+});
+
+// ───────────── 患者扫码查看报告：服务端短链令牌（方案 B）─────────────
+// POST   /api/share        (auth)       创建分享令牌，落库报告数据，返回短链 URL
+// GET    /api/share        (auth)       列出本人（管理员看全部）的分享令牌
+// GET    /api/share/:token (公开)       患者端读取，自动 +1 浏览计数；404/410 表示失效/过期
+// DELETE /api/share/:token (auth)       仅创建者或管理员可撤销
+const SHARE_TTL_DAYS = parseInt(process.env.SHARE_TTL_DAYS || '0', 10); // 0 = 不过期
+function buildShareUrl(req, token) {
+  const envBase = process.env.PUBLIC_BASE_URL;
+  if (envBase) return envBase.replace(/\/$/, '') + '/s/' + token;
+  const proto = (req.headers['x-forwarded-proto'] || (req.socket && req.socket.encrypted ? 'https' : 'http') || 'https');
+  const host = req.headers['host'] || '';
+  if (proto && host) return proto + '://' + host + '/s/' + token;
+  return '/s/' + token;
+}
+app.post('/api/share', authMiddleware, (req, res) => {
+  const b = req.body || {};
+  if (!b.data || typeof b.data !== 'object') return res.status(400).json({ error: '缺少分享数据' });
+  let dataJson;
+  try { dataJson = JSON.stringify(b.data); } catch (e) { return res.status(400).json({ error: '数据序列化失败' }); }
+  if (dataJson.length > 2 * 1024 * 1024) return res.status(413).json({ error: '分享内容过大，请精简后重试' });
+  const token = crypto.randomBytes(16).toString('hex');
+  const title = (typeof b.title === 'string' && b.title.trim()) ? b.title.trim().slice(0, 200) : '';
+  let expiresAt = null;
+  if (SHARE_TTL_DAYS > 0) {
+    const d = new Date(Date.now() + SHARE_TTL_DAYS * 86400000);
+    expiresAt = d.toISOString();
+  } else if (typeof b.expiresAt === 'string' && b.expiresAt) {
+    expiresAt = b.expiresAt.slice(0, 64);
+  }
+  try {
+    db.prepare('INSERT INTO share_tokens (token, owner_id, title, data_json, expires_at) VALUES (?,?,?,?,?)')
+      .run(token, req.user.uid, title, dataJson, expiresAt);
+    res.json({ ok: true, token, url: buildShareUrl(req, token), expiresAt });
+  } catch (e) {
+    res.status(500).json({ error: '创建分享失败' });
+  }
+});
+app.get('/api/share', authMiddleware, (req, res) => {
+  try {
+    const rows = (req.user.role === 'admin')
+      ? db.prepare('SELECT token, owner_id, title, created_at, expires_at, views FROM share_tokens ORDER BY created_at DESC LIMIT 200').all()
+      : db.prepare('SELECT token, owner_id, title, created_at, expires_at, views FROM share_tokens WHERE owner_id = ? ORDER BY created_at DESC LIMIT 200').all(req.user.uid);
+    res.json({ ok: true, items: rows.map(function (r) {
+      return { token: r.token, title: r.title, createdAt: r.created_at, expiresAt: r.expires_at, views: r.views };
+    }) });
+  } catch (e) { res.status(500).json({ error: '查询失败' }); }
+});
+app.get('/api/share/:token', (req, res) => {
+  const token = (req.params.token || '').toString().slice(0, 64);
+  if (!token) return res.status(400).json({ error: '缺少 token' });
+  try {
+    const row = db.prepare('SELECT * FROM share_tokens WHERE token = ?').get(token);
+    if (!row) return res.status(404).json({ error: '分享链接不存在或已失效' });
+    if (row.expires_at) {
+      const exp = new Date(row.expires_at);
+      if (!isNaN(exp.getTime()) && exp < new Date()) return res.status(410).json({ error: '分享链接已过期' });
+    }
+    db.prepare('UPDATE share_tokens SET views = views + 1 WHERE token = ?').run(token);
+    let data;
+    try { data = JSON.parse(row.data_json); } catch (e) { return res.status(500).json({ error: '分享数据损坏' }); }
+    res.json({ ok: true, data: data, title: row.title || '', views: (row.views || 0) + 1, createdAt: row.created_at });
+  } catch (e) { res.status(500).json({ error: '读取失败' }); }
+});
+app.delete('/api/share/:token', authMiddleware, (req, res) => {
+  const token = (req.params.token || '').toString().slice(0, 64);
+  if (!token) return res.status(400).json({ error: '缺少 token' });
+  try {
+    const row = db.prepare('SELECT owner_id FROM share_tokens WHERE token = ?').get(token);
+    if (!row) return res.status(404).json({ error: '分享链接不存在' });
+    if (row.owner_id !== req.user.uid && req.user.role !== 'admin') return res.status(403).json({ error: '只能撤销本人创建的分享' });
+    db.prepare('DELETE FROM share_tokens WHERE token = ?').run(token);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: '撤销失败' }); }
 });
 
 // ── L0-5 登录失败限流（内存计次，重启清零；单主机内网场景足够）──

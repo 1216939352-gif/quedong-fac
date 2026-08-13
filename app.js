@@ -781,8 +781,8 @@ const NAV = [
     section: '系统设置',
     items: [
       { hash: '#/admin', icon: '⚡', label: '系统管理后台', adminOnly: true },
-      { hash: '#/accounts', icon: '👑', label: '超级管理员 · 账号管理', superOnly: true },
-      { hash: '#/errlog', icon: '🛡️', label: '超级管理员 · 系统报错日志', superOnly: true }
+      { hash: '#/accounts', icon: '👑', label: '账号管理', superOnly: true },
+      { hash: '#/errlog', icon: '🛡️', label: '系统运维中心', superOnly: true }
     ]
   },
 ];
@@ -869,7 +869,7 @@ async function bootApp() {
   // 侧边栏底部植入小Qoo 吉祥物（场景化品牌触点）
   const sFooter = U.qs('.sidebar-footer');
   if (sFooter) {
-    sFooter.innerHTML = '<img class="sidebar-qoo" src="assets/qoo.png" alt="小Qoo" onerror="this.style.display=\'none\'"><span>内测版 V2.0</span>';
+    sFooter.innerHTML = '<img class="sidebar-qoo" src="assets/qoo.png" alt="小Qoo" onerror="this.style.display=\'none\'"><span>内测版 V3.0.1</span>';
   }
 
   // 应用皮肤引擎（液态玻璃 · 多配色预设 / 质感模式 / 暗亮模式）
@@ -968,8 +968,8 @@ const ROUTES = {
   '#/bigdata': { title: '体重管理看板', render: () => Pages.bigdata() },
   '#/styleguide': { title: '设计系统', render: () => Pages.styleguide() },
   '#/admin': { title: '系统管理后台', render: () => Pages.admin(), adminOnly: true },
-  '#/accounts': { title: '超级管理员 · 账号管理', render: () => Pages.accounts(), superOnly: true },
-  '#/errlog': { title: '超级管理员 · 系统报错日志', render: () => Pages.errLog(), superOnly: true },
+  '#/accounts': { title: '账号管理', render: () => Pages.accounts(), superOnly: true },
+  '#/errlog': { title: '系统运维中心', render: () => Pages.errLog(), superOnly: true },
   '#/action-library': { title: '运动方案库管理中心', render: () => Pages.actionLibrary(), adminOnly: true },
   // —— 平行独立核心模块：老年人体重与肌少症管理（独立菜单 / 独立业务数据 / 独立报告 / 独立干预台账）——
   '#/sarcopenia': { title: '肌少症-跌倒风险台账', render: () => Pages.sarcopenia() },
@@ -2482,6 +2482,8 @@ async function init() {
   if (window.Fullscreen && await Fullscreen.maybeRenderKiosk()) return;
   // 患者只读分享链接优先：存在 ?share= 则渲染只读视图并跳过登录
   if (window.Share && window.Share.maybeRenderShare()) return;
+  // 患者扫码进入 /s/<token> 短链：从服务端拉取只读报告并跳过登录
+  if (window.Share && await window.Share.maybeRenderByPath()) return;
   const sess = loadSession();
   if (sess && sess.username) {
     try {

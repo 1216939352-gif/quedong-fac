@@ -6,9 +6,10 @@ server/node_modules/
 server/data/
 server/media/
 server/backups/
-data/
-media/
-backups/
+# 注意：必须锚定到仓库根，避免误伤前端静态资源目录（如 _dl3/assets/data/regions.js）
+/data/
+/media/
+/backups/
 *.db
 *.sqlite
 *.sqlite3

@@ -1016,7 +1016,7 @@
     sel.innerHTML = '<option value="">加载模型…</option>';
     function paint() {
       models().then(function (list) {
-        if (!list || !list.length) { sel.innerHTML = '<option value="">（无可用模型）</option>'; return; }
+        if (!list || !list.length) { sel.innerHTML = '<option value="">（AI 未配置：需在服务端设置 AI 密钥）</option>'; return; }
         var cur = getModel() || (list[0] ? list[0].id : '');
         var html = list.map(function (m) {
           var s = (m.id === cur) ? ' selected' : '';
@@ -1220,7 +1220,7 @@
     function refreshModelSelect() {
       AIReason.models().then(function (list) {
         if (!modelMenu) return;
-        if (!list || !list.length) { if (modelPick) modelPick.style.display = 'none'; return; }
+        if (!list || !list.length) { if (modelPick) { modelPick.style.display = ''; modelLabel.textContent = 'AI 未配置（需设置密钥）'; } return; }
         if (modelPick) modelPick.style.display = '';
         var cur = getModel();
         if (!cur && list[0]) { setModel(list[0].id); cur = list[0].id; }

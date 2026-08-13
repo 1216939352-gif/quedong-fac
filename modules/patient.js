@@ -288,6 +288,10 @@
         items.map(s => '<option value="' + U.esc(s) + '">' + U.esc(s) + '</option>').join('');
     }
     setOptions(pvSel, Object.keys(REG), '— 省/直辖市 —');
+    if (!REG || !Object.keys(REG).length) {
+      pvSel.innerHTML = '<option value="">地区数据未加载，请刷新页面</option>';
+      console.warn('[patient] window.CHINA_REGIONS 为空，所在地区三级联动不可用');
+    }
     function syncRegionFromData(regionObj) {
       if (!regionObj || !regionObj.province) { pvSel.value = ''; ctSel.value = ''; cySel.value = ''; ctSel.disabled = true; cySel.disabled = true; return; }
       pvSel.value = regionObj.province || '';

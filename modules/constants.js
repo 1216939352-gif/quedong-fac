@@ -5,7 +5,7 @@
 
 const CONST = {
   SYSTEM_NAME: '鹊动FAC功能评估与干预系统',
-  VERSION: '内测版 V2.0',
+  VERSION: '内测版 V3.0.1',
 
   /* ============ 活动系数 ============ */
   ACTIVITY_LEVELS: [
