@@ -33,7 +33,18 @@
       const scheme = opts.scheme === 'sarcopenia' ? 'sarcopenia' : 'weight';
       let exercises = [];
       let patient = { id: p0.id || '', name: p0.name || '', gender: p0.gender || '', age: p0.age || '' };
-      if (scheme === 'sarcopenia' && window.__sarcSharePayload && window.__sarcSharePayload.module === 'sarcopenia') {
+      // 优先使用调用方显式传入的肌少症快照（避免依赖易失全局变量，杜绝回落到体重方案）
+      if (scheme === 'sarcopenia' && opts.sarcoRec) {
+        const rec = opts.sarcoRec || {};
+        exercises = collectSarcExercises(rec);
+        const sp = rec.patient || {};
+        patient = {
+          id: sp.id || rec.pid || rec.id || p0.id || '',
+          name: sp.name || rec.name || p0.name || '',
+          gender: sp.gender || '',
+          age: sp.age || ''
+        };
+      } else if (scheme === 'sarcopenia' && window.__sarcSharePayload && window.__sarcSharePayload.module === 'sarcopenia') {
         const rec = window.__sarcSharePayload.rec || {};
         exercises = collectSarcExercises(rec);
         const sp = rec.patient || {};
@@ -43,7 +54,8 @@
           gender: sp.gender || '',
           age: sp.age || ''
         };
-      } else if (AppState.plan) {
+      } else if (scheme === 'weight' && AppState.plan) {
+        // 仅体重管理方案回落到 AppState.plan；肌少症绝不明目张胆回落到体重方案
         exercises = collectPlanExercisesFlat(AppState.plan);
       }
       return {

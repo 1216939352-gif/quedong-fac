@@ -1983,8 +1983,9 @@
         } catch (e) { console.warn('[sarcopenia] 步骤7 AI 解读挂载失败', e); }
         U.qsa('.btn-share-sarc-qr', bodyEl).forEach(btn => {
           btn.onclick = () => {
-            if (window.SarcShare && typeof SarcShare.snapshot === 'function') SarcShare.snapshot();
-            if (window.Share && typeof Share.openPlanQRModal === 'function') Share.openPlanQRModal({ scheme: 'sarcopenia' });
+            let sarcoRec = null;
+            if (window.SarcShare && typeof SarcShare.snapshot === 'function') sarcoRec = SarcShare.snapshot();
+            if (window.Share && typeof Share.openPlanQRModal === 'function') Share.openPlanQRModal({ scheme: 'sarcopenia', sarcoRec: sarcoRec });
             else U.toast('分享组件未就绪', 'error');
           };
         });
@@ -2030,8 +2031,9 @@
         if (pp) pp.onclick = () => printSarcPlan(buildRecord(compute()));
         U.qsa('.btn-share-sarc-qr', bodyEl).forEach(btn => {
           btn.onclick = () => {
-            if (window.SarcShare && typeof SarcShare.snapshot === 'function') SarcShare.snapshot();
-            if (window.Share && typeof Share.openPlanQRModal === 'function') Share.openPlanQRModal({ scheme: 'sarcopenia' });
+            let sarcoRec = null;
+            if (window.SarcShare && typeof SarcShare.snapshot === 'function') sarcoRec = SarcShare.snapshot();
+            if (window.Share && typeof Share.openPlanQRModal === 'function') Share.openPlanQRModal({ scheme: 'sarcopenia', sarcoRec: sarcoRec });
             else U.toast('分享组件未就绪', 'error');
           };
         });
@@ -2804,7 +2806,7 @@
         return shareRec;
       } catch (e) {
         console.warn('[sarcopenia] 分享快照生成失败', e);
-        window.__sarcSharePayload = null;
+        // 不在此清空全局，避免连带使已生成的快照失效；调用方会显式拿到返回结果
         return null;
       }
     }
