@@ -174,7 +174,7 @@
   }
   async function syncCheckinFromServer(pid) {
     if (!pid || pid === 'anon') return;
-    if (window.Sync && window.Sync.isOnline && window.Sync.isOnline() === false) return;
+    // 不再以 Sync.isOnline() 拦截：患者打卡始终尝试上报，网络失败时保留本地记录（已有兜底）。
     try {
       const r = await fetch(checkinApiBase() + '/api/checkin?pid=' + encodeURIComponent(pid));
       if (!r.ok) return;
@@ -190,7 +190,7 @@
   }
   async function syncCheckinToServer(pid, ds, set) {
     if (!pid || pid === 'anon') return;
-    if (window.Sync && window.Sync.isOnline && window.Sync.isOnline() === false) return;
+    // 不再以 Sync.isOnline() 拦截：患者打卡始终尝试上报，网络失败时保留本地记录（已有兜底）。
     try {
       await fetch(checkinApiBase() + '/api/checkin', {
         method: 'POST',
@@ -672,11 +672,21 @@
     };
   }
 
+  /* 标记当前为"患者只读分享视图"：让 Sync 模块隐藏离线横幅并放行打卡提交
+     （移动端 navigator.onLine / 首轮 /health 偶发失败会造成管理员视角的"离线误判"）。 */
+  function markPatientView() {
+    try { window.__patientView = true; } catch (e) {}
+    if (window.Sync && typeof window.Sync.forceOnline === 'function') {
+      try { window.Sync.forceOnline(); } catch (e) {}
+    }
+  }
+
   /* 由 app.js 的 init() 在最早阶段调用：若存在 ?share= 则渲染只读视图并拦截登录 */
   function maybeRenderShare() {
     const params = new URLSearchParams(location.search);
     const p = params.get('share');
     if (!p) return false;
+    markPatientView();
     const app = U.qs('#app');
     const data = decodeShare(p);
     if (!data) {
@@ -719,6 +729,7 @@
   async function maybeRenderByPath() {
     const m = location.pathname.match(/\/s\/([A-Za-z0-9_-]{8,})/);
     if (!m) return false;
+    markPatientView();
     const token = m[1];
     const app = U.qs('#app');
     if (app) app.innerHTML = '<div class="mreport-view"><div class="mreport-body"><div class="text-muted" style="padding:48px 16px;text-align:center;">正在加载您的分享报告…</div></div></div>';

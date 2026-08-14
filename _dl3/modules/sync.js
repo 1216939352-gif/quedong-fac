@@ -450,6 +450,9 @@
 
   // ───────── 循环 ─────────
   async function tick() {
+    // 患者只读分享视图：无需管理员双向同步，且移动端 navigator.onLine / 首轮 /health
+    // 偶发失败会造成"离线误判"（横幅 + 打卡被拦截）。此处直接判为在线、不再轮询健康检查。
+    if (window.__patientView) { if (!online) setOnline(true); return; }
     if (!browserOnline()) { setOnline(false, 'network'); return; }
     const ok = await checkBackend();
     if (ok !== online) {
@@ -552,6 +555,11 @@
     releaseLock: releaseLock,
     status: status,
     isOnline: function () { return online; },
+    // 由分享只读页调用：标记为"患者视图"并强制在线（隐藏离线横幅、放行打卡提交）。
+    forceOnline: function () {
+      try { window.__patientView = true; } catch (e) {}
+      setOnline(true);
+    },
     on: function (fn) { listeners.push(fn); },
     COLLECTIONS: COLLECTIONS,
     get deviceId() { return deviceId; }

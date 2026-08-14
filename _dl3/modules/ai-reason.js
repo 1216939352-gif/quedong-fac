@@ -1616,8 +1616,9 @@
       });
     }
 
-    if (pref.interp) runInterpret();
-    if (pref.plan) runPlan();
+    // ⚠️ 刻意不在此处自动执行 runInterpret()/runPlan()：AI 解读与方案仅允许医生手动点击
+    // 「生成」按钮（或手动拨动开关）触发，避免打开报告/方案页即自动联网生成。
+    // 开关偏好(pref)仍持久化，仅作为下次点「生成」时的默认勾选项，不再自动跑。
   }
 
   /**
