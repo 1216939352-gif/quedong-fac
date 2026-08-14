@@ -213,16 +213,16 @@
   function wireAIResultActions(scope, payload) {
     payload = payload || {};
     var exBtn = scope.querySelector('.ai-export-pdf');
-    if (exBtn) exBtn.onclick = function () {
+    if (exBtn) exBtn.onclick = async function () {
       var name = exBtn.getAttribute('data-filename') || '鹊动小Qoo报告';
-      var html = payload.plan ? buildPlanReportHTML(payload.plan, payload.gate, { title: payload.title, patient: payload.patient, provider: payload.provider, raw: payload.raw })
+      var html = payload.plan ? await buildPlanReportHTML(payload.plan, payload.gate, { title: payload.title, patient: payload.patient, provider: payload.provider, raw: payload.raw })
                              : buildInterpReportHTML(payload.markdown || '', { title: payload.title, patient: payload.patient, provider: payload.provider });
       exportPDF(html, name);
     };
     var htmlBtn = scope.querySelector('.ai-export-html');
-    if (htmlBtn) htmlBtn.onclick = function () {
+    if (htmlBtn) htmlBtn.onclick = async function () {
       var name = htmlBtn.getAttribute('data-filename') || '鹊动小Qoo报告';
-      var html = payload.plan ? buildPlanReportHTML(payload.plan, payload.gate, { title: payload.title, patient: payload.patient, provider: payload.provider, raw: payload.raw })
+      var html = payload.plan ? await buildPlanReportHTML(payload.plan, payload.gate, { title: payload.title, patient: payload.patient, provider: payload.provider, raw: payload.raw })
                               : buildInterpReportHTML(payload.markdown || '', { title: payload.title, patient: payload.patient, provider: payload.provider });
       exportHTML(html, name);
     };
@@ -322,18 +322,25 @@
       '<div class="pdf-foot">本解读由「鹊动小Qoo」AI 辅助生成，仅供专业人员参考，须结合临床实际由具备资质的医务人员确认，不构成诊断或处方意见。</div>';
   }
   // 构造可导出的方案报告 HTML（复用 planSummaryHTML + gateHTML）
-  function buildPlanReportHTML(plan, gate, meta) {
+  async function buildPlanReportHTML(plan, gate, meta) {
     meta = meta || {};
     var title = meta.title || '鹊动小Qoo 智能训练方案';
     var tsStr = new Date(meta.ts || Date.now()).toLocaleString('zh-CN');
     var body = plan ? planSummaryHTML(plan) : rawFallbackHTML(meta.raw || '');
-    return '' +
+    var html = '' +
       '<div class="pdf-head">' +
         '<div class="pdf-title">' + esc(title) + '</div>' +
         '<div class="pdf-meta">生成时间：' + esc(tsStr) + (meta.patient ? ' ｜ ' + esc(meta.patient) : '') + ' ｜ 来源：' + esc(meta.provider || 'AI') + '</div>' +
       '</div>' +
       body + gateHTML(gate) +
       '<div class="pdf-foot">本方案由「鹊动小Qoo」AI 辅助生成，须经专业人员确认后方可执行，不构成医疗处方。</div>';
+    if (plan && window.Share && typeof window.Share.buildPlanQrBlock === 'function') {
+      try {
+        var qb = await window.Share.buildPlanQrBlock({ mode: 'plan', scheme: 'weight', title: title });
+        if (qb) html += qb;
+      } catch (e) { /* 二维码生成失败不影响导出 */ }
+    }
+    return html;
   }
 
   // 解读历史查看器（模态）：列出每次成功解读，可导出/删除/清空，支持复诊对比
@@ -385,7 +392,9 @@
       var it = list[idx]; if (!it) return;
       if (t.classList.contains('ai-hist-export')) {
         if (it.kind === 'plan') {
-          exportPDF(buildPlanReportHTML(it.plan || null, it.gate, { title: it.title || '鹊动小Qoo 智能训练方案', patient: it.patient, provider: it.provider, ts: it.ts, raw: it.raw }), (it.title || '鹊动小Qoo方案') + '_' + it.ts);
+          buildPlanReportHTML(it.plan || null, it.gate, { title: it.title || '鹊动小Qoo 智能训练方案', patient: it.patient, provider: it.provider, ts: it.ts, raw: it.raw }).then(function (h) {
+            exportPDF(h, (it.title || '鹊动小Qoo方案') + '_' + it.ts);
+          });
         } else {
           exportPDF(buildInterpReportHTML(it.markdown || it.raw || '', { title: it.title || '鹊动小Qoo 报告解读', patient: it.patient, provider: it.provider, ts: it.ts }), (it.title || '鹊动小Qoo报告') + '_' + it.ts);
         }

@@ -403,7 +403,7 @@
       const name = (e && (e.name || e.label)) || '';
       if (!name) return;
       const meta = [e.sets ? (e.sets + '组') : '', e.reps ? (e.reps + '次') : '', e.rest ? ('休息' + e.rest) : ''].filter(Boolean).join(' · ');
-      out.push({ id: (e.id || name), name: name, meta: meta, cat: cat, desc: (e.desc || e.description || e.note || '') });
+      out.push({ id: (e.id || name), name: name, meta: meta, cat: cat, desc: (e.desc || e.description || e.note || ''), video: (e.video || ''), image: (e.image || '') });
     };
     ['resistance', 'balance', 'flexibility'].forEach(function (c) {
       const arr = plan && plan[c] && plan[c].exercises;
@@ -427,10 +427,65 @@
       if (grp && Array.isArray(grp.items)) grp.items.forEach(function (it) {
         const name = (it && it.name) || '';
         if (!name) return;
-        out.push({ id: name, name: name, meta: (it.params || ''), cat: g, desc: (it.keyPoints || it.desc || '') });
+        out.push({ id: (it.id || name), name: name, meta: (it.params || ''), cat: g, desc: (it.keyPoints || it.desc || ''), video: (it.video || ''), image: (it.image || '') });
       });
     });
     return out;
+  }
+  // 将本地媒体 Blob（IndexedDB）转为 data-URL；超 maxBytes 返回 null（调用方按"过大"处理）
+  function blobToDataURL(blob, maxBytes) {
+    return new Promise(function (resolve) {
+      if (!blob) return resolve(null);
+      if (maxBytes && blob.size > maxBytes) return resolve(null);
+      try {
+        const fr = new FileReader();
+        fr.onload = function () { resolve(fr.result); };
+        fr.onerror = function () { resolve(null); };
+        fr.readAsDataURL(blob);
+      } catch (e) { resolve(null); }
+    });
+  }
+  // 解析单个动作的可访问媒体：优先复用 data:/http(s)://；'__local__' 时从 DB 按命名空间键读取 Blob 转 data-URL。
+  // 视频超 15MB 标记 '__too_large__'，由前端提示在医生端查看；图片超 20MB 同样标记。
+  async function resolveExerciseMedia(lib, ex) {
+    const out = { image: null, video: null };
+    if (!ex) return out;
+    const ids = [ex.id, ex.name].filter(Boolean).map(String);
+    const keys = [];
+    ids.forEach(function (id) {
+      if (lib === 'strength') { keys.push('slib:' + id); keys.push(id); }
+      else if (lib === 'sarc') keys.push('sarc:' + id);
+      else keys.push(id);
+    });
+    const videoMark = ex.video, imageMark = ex.image;
+    if (!videoMark && !imageMark) return out;
+    let rec = null;
+    if ((videoMark === '__local__' || imageMark === '__local__') && window.DB && DB.getPlanMedia) {
+      for (const k of keys) {
+        try { const r = await DB.getPlanMedia(k); if (r && (r.image || r.video)) { rec = r; break; } } catch (e) {}
+      }
+    }
+    if (imageMark) {
+      if (typeof imageMark === 'string') {
+        if (imageMark.indexOf('data:') === 0 || imageMark.indexOf('http') === 0) out.image = imageMark;
+        else if (imageMark === '__local__' && rec && rec.image) out.image = await blobToDataURL(rec.image, 20 * 1024 * 1024);
+      }
+    }
+    if (videoMark) {
+      if (typeof videoMark === 'string') {
+        if (videoMark.indexOf('data:') === 0 || videoMark.indexOf('http') === 0) out.video = videoMark;
+        else if (videoMark === '__local__' && rec && rec.video) out.video = (await blobToDataURL(rec.video, 15 * 1024 * 1024)) || '__too_large__';
+      }
+    }
+    return out;
+  }
+  // 给分享方案的动作清单补上可访问媒体（在医生浏览器内完成本地 Blob → data-URL 转换，随短链存服务端）
+  async function enrichShareMedia(data, opts) {
+    if (!data || !Array.isArray(data.exercises)) return;
+    const lib = data.scheme === 'sarcopenia' ? 'sarc' : 'strength';
+    for (const ex of data.exercises) {
+      try { ex.media = await resolveExerciseMedia(lib, ex); } catch (e) { ex.media = null; }
+    }
   }
 
   // 多选项原因弹窗（费力完成/未完成时触发）
@@ -473,7 +528,7 @@
     const pid = (data.pid) || (data.patient && data.patient.id) || 'anon';
     const scheme = data.scheme === 'sarcopenia' ? 'sarcopenia' : 'weight';
     const exercises = Array.isArray(data.exercises) ? data.exercises.map(function (e) {
-      return { id: (e.id || e.name || ''), name: (e.name || ''), meta: (e.meta || ''), cat: (e.cat || ''), desc: (e.desc || '') };
+      return { id: (e.id || e.name || ''), name: (e.name || ''), meta: (e.meta || ''), cat: (e.cat || ''), desc: (e.desc || ''), media: (e.media || null) };
     }) : [];
     const pname = (data.patient && data.patient.name) || data.title || '患者';
     const today = dateStr(new Date());
@@ -508,10 +563,29 @@
         const k = ex.id || ex.name; const st = state[k]; const lv = st.level;
         const reasonsTip = (lv === 'hard' || lv === 'none') && st.reasons.length
           ? '<div class="mplan-reasons-tip">原因：' + st.reasons.map(checkinReasonText).join('、') + '</div>' : '';
-        return '<div class="mplan-ex" data-key="' + U.esc(k) + '">' +
+        const mediaHtml = (function () {
+        const m = ex.media;
+        if (!m) return '';
+        let h = '<div class="mplan-ex-media">';
+        if (m.image && m.image !== '__too_large__') {
+          h += '<img class="mplan-ex-img" src="' + U.esc(m.image) + '" alt="' + U.esc(ex.name) + '" style="width:100%;max-height:200px;object-fit:cover;border-radius:10px;margin-top:8px;background:#fff;" onerror="this.style.display=\'none\'"/>';
+        }
+        if (m.video) {
+          if (m.video === '__too_large__') {
+            h += '<div class="mplan-ex-note" style="font-size:12px;color:#b45309;margin-top:6px;">📹 该动作配套视频较大，请在医生端查看</div>';
+          } else {
+            h += '<video class="mplan-ex-video" controls preload="metadata" style="width:100%;max-height:240px;border-radius:10px;margin-top:8px;background:#000;" src="' + U.esc(m.video) + '"></video>';
+          }
+        }
+        h += '</div>';
+        return h;
+      })();
+      return '<div class="mplan-ex" data-key="' + U.esc(k) + '">' +
           '<div class="mplan-ex-head"><div class="mplan-ex-name">' + U.esc(ex.name) + '</div>' +
           (catLabel[ex.cat] ? '<span class="mplan-ex-cat">' + U.esc(catLabel[ex.cat]) + '</span>' : '') + '</div>' +
           (ex.meta ? '<div class="mplan-ex-meta">' + U.esc(ex.meta) + '</div>' : '') +
+          mediaHtml +
+          (ex.desc ? '<div class="mplan-ex-desc" style="font-size:12.5px;color:#475569;margin-top:6px;line-height:1.6;">' + U.esc(ex.desc) + '</div>' : '') +
           '<div class="mplan-pills">' + pill(k, 'easy', '轻松完成', lv) + pill(k, 'normal', '一般完成', lv) + pill(k, 'hard', '费力完成', lv) + pill(k, 'none', '未完成', lv) + '</div>' +
           reasonsTip + '</div>';
       }).join('');
@@ -623,6 +697,8 @@
     const headers = window.QDAuth.authHeaders();
     if (!headers.Authorization) return null; // 未登录（本地离线）直接用 base64
     const data = snapshotShareData(opts);
+    // 给方案分享补充可访问媒体（图片/视频 → data-URL），随短链存服务端；失败不影响链接生成
+    try { await enrichShareMedia(data, opts); } catch (e) {}
     const title = opts.title
       || (data.patient && data.patient.name ? data.patient.name + ' 报告' : '')
       || (data.module === 'sarcopenia' ? '肌少症报告' : '患者报告');
@@ -762,10 +838,54 @@
     void overlay; void close;
   }
 
+  /* 生成可嵌入"打印 / 导出报告"的方案二维码块（离线可用 data-URI 图片）。
+     opts: { mode:'plan'|'report'|'ai', scheme:'weight'|'sarcopenia', title, sarcoRec }
+     返回 HTML 字符串；生成失败返回空串（不影响原报告打印）。
+     优先走服务端短链（链接短、易扫描、可撤销），失败回落本地 base64。 */
+  async function buildPlanQrBlock(opts) {
+    opts = opts || {};
+    const isPlan = opts.mode === 'plan';
+    const isAi = opts.mode === 'ai';
+    let url = '';
+    try {
+      const created = await createShareToken(Object.assign({ mode: opts.mode }, opts));
+      if (created && created.url) url = created.url;
+    } catch (e) { url = ''; }
+    if (!url) {
+      try {
+        if (isPlan) url = buildShareURL({ mode: 'plan', scheme: opts.scheme, title: opts.title, sarcoRec: opts.sarcoRec });
+        else if (isAi) url = buildShareURL({ mode: 'ai' });
+        else url = buildShareURL();
+      } catch (e) { url = ''; }
+    }
+    if (!url) return '';
+    let qrImg = '';
+    try {
+      const qr = window.qrcode(0, 'L'); // 0 = 自动选择最小版本
+      qr.addData(url);
+      qr.make();
+      qrImg = qr.createDataURL(6, 10);
+    } catch (e) { qrImg = ''; }
+    if (!qrImg) return '';
+    const caption = isPlan
+      ? '📱 扫码在手机上查看本训练方案，并每日完成训练打卡'
+      : (isAi ? '📱 扫码在手机上查看本次 AI 解读' : '📱 扫码在手机上查看您的评估报告');
+    const note = (url.length > 1800) ? '<div style="font-size:10px;color:#b91c1c;margin-top:4px;">链接较长，若扫码失败可直接发送下方链接</div>' : '';
+    return ''
+      + '<div class="print-share-qr" style="display:flex;align-items:center;gap:16px;margin-top:24px;padding:16px;border:1px dashed #cbd5e1;border-radius:10px;background:#f8fafc;page-break-inside:avoid;">'
+      + '<img src="' + qrImg + '" alt="QR" style="width:128px;height:128px;flex:0 0 auto;background:#fff;"/>'
+      + '<div style="flex:1 1 auto;font-size:13px;line-height:1.6;color:#334155;">'
+      + '<div style="font-weight:700;font-size:14px;color:#0f172a;margin-bottom:4px;">' + caption + '</div>'
+      + '<div style="font-size:11px;color:#64748b;word-break:break-all;">链接：' + U.esc(url) + '</div>'
+      + note
+      + '</div></div>';
+  }
+
   window.Share = {
     maybeRenderShare,
     maybeRenderByPath,
     openQRModal,
+    buildPlanQrBlock,
     openAIQRModal: function () { openQRModal({ mode: 'ai' }); },
     openPlanQRModal: function (opts) { openQRModal(Object.assign({ mode: 'plan' }, opts || {})); },
     renderMobilePlan,

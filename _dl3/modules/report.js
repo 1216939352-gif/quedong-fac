@@ -588,13 +588,25 @@
       U.toast('已载入患者等张报告', 'success');
     } catch (e) { console.error(e); U.toast('加载患者失败：' + (e.message || e), 'error'); }
   };
-  window.printIsoReport = function () {
+  window.printIsoReport = async function () {
     const body = U.qs('#iso-report-body');
-    if (body) window.printReportHTML(body.innerHTML);
+    if (!body) return;
+    let html = body.innerHTML;
+    try {
+      const qb = await window.Share.buildPlanQrBlock({ mode: 'report' });
+      if (qb) html += qb;
+    } catch (e) { /* 二维码生成失败不影响打印 */ }
+    window.printReportHTML(html);
   };
-  window.printIotReport = function () {
+  window.printIotReport = async function () {
     const body = U.qs('#iot-report-body');
-    if (body) window.printReportHTML(body.innerHTML);
+    if (!body) return;
+    let html = body.innerHTML;
+    try {
+      const qb = await window.Share.buildPlanQrBlock({ mode: 'report' });
+      if (qb) html += qb;
+    } catch (e) { /* 二维码生成失败不影响打印 */ }
+    window.printReportHTML(html);
   };
   window.shareIsoReport = function () {
     if (!AppState.patient || !AppState.patient.id) { U.toast('请先在上方选择患者', 'warning'); return; }

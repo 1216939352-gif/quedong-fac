@@ -2812,28 +2812,45 @@
     }
   };
 
-  function printSarc(rec) {
+  async function printSarc(rec) {
     let stage = document.getElementById('report-print-stage');
     if (!stage) { stage = document.createElement('div'); stage.id = 'report-print-stage'; document.body.appendChild(stage); }
-    stage.innerHTML = window.buildSarcReport(rec);
+    let html = window.buildSarcReport(rec);
+    try {
+      const sarcoRec = (window.SarcShare && typeof SarcShare.snapshot === 'function') ? SarcShare.snapshot() : null;
+      const qb = await window.Share.buildPlanQrBlock({ mode: 'plan', scheme: 'sarcopenia', sarcoRec: sarcoRec, title: (rec.patientName || '') + ' 肌少症训练方案' });
+      if (qb) html += qb;
+    } catch (e) { /* 二维码生成失败不影响打印 */ }
+    stage.innerHTML = html;
     const clear = () => { stage.innerHTML = ''; window.onafterprint = null; };
     window.onafterprint = clear;
     setTimeout(() => window.print(), 80);
   }
   /* 单独打印 / 导出：评估报告（一~六） */
-  function printSarcAssessment(rec) {
+  async function printSarcAssessment(rec) {
     let stage = document.getElementById('report-print-stage');
     if (!stage) { stage = document.createElement('div'); stage.id = 'report-print-stage'; document.body.appendChild(stage); }
-    stage.innerHTML = window.buildSarcAssessmentReport(rec);
+    let html = window.buildSarcAssessmentReport(rec);
+    try {
+      const qb = await window.Share.buildPlanQrBlock({ mode: 'report' });
+      if (qb) html += qb;
+    } catch (e) { /* 二维码生成失败不影响打印 */ }
+    stage.innerHTML = html;
     const clear = () => { stage.innerHTML = ''; window.onafterprint = null; };
     window.onafterprint = clear;
     setTimeout(() => window.print(), 80);
   }
   /* 单独打印 / 导出：干预方案（七~十） */
-  function printSarcPlan(rec) {
+  async function printSarcPlan(rec) {
     let stage = document.getElementById('report-print-stage');
     if (!stage) { stage = document.createElement('div'); stage.id = 'report-print-stage'; document.body.appendChild(stage); }
-    stage.innerHTML = window.buildSarcPlanReport(rec);
+    let html = window.buildSarcPlanReport(rec);
+    try {
+      const sarcoRec = (window.SarcShare && typeof SarcShare.snapshot === 'function') ? SarcShare.snapshot() : null;
+      const qb = await window.Share.buildPlanQrBlock({ mode: 'plan', scheme: 'sarcopenia', sarcoRec: sarcoRec, title: (rec.patientName || '') + ' 肌少症训练方案' });
+      if (qb) html += qb;
+    } catch (e) { /* 二维码生成失败不影响打印 */ }
+    stage.innerHTML = html;
     const clear = () => { stage.innerHTML = ''; window.onafterprint = null; };
     window.onafterprint = clear;
     setTimeout(() => window.print(), 80);
