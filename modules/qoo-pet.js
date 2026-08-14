@@ -163,6 +163,11 @@
 
     document.body.appendChild(el);
 
+    // 患者只读视图（扫码分享页）：隐藏 AI 助手图标
+    if (window.__patientView) {
+      el.style.display = 'none';
+    }
+
     var state = loadState() || defaultPos();
     applyPos(state.left, state.top);
 

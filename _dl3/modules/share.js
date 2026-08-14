@@ -679,6 +679,14 @@
     if (window.Sync && typeof window.Sync.forceOnline === 'function') {
       try { window.Sync.forceOnline(); } catch (e) {}
     }
+    // 患者只读视图不展示 AI 助手图标（小Qoo 宠物 + AI 浮窗入口）
+    try {
+      if (window.QooPet && typeof window.QooPet.hide === 'function') window.QooPet.hide();
+      var fab = document.getElementById('ai-chat-fab');
+      if (fab) fab.style.display = 'none';
+      var ov = document.getElementById('ai-chat-overlay');
+      if (ov) ov.style.display = 'none';
+    } catch (e) {}
   }
 
   /* 由 app.js 的 init() 在最早阶段调用：若存在 ?share= 则渲染只读视图并拦截登录 */
