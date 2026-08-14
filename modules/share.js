@@ -422,10 +422,10 @@
   }
 
   // 多选项原因弹窗（费力完成/未完成时触发）
-  function openCheckinReasonsModal(key, current, onConfirm) {
+  function openCheckinReasonsModal(key, level, current, onConfirm) {
     const selected = current.slice();
     const body = '<p class="text-muted" style="font-size:13px;line-height:1.7;margin:0 0 12px;">请选择本次「' +
-      (state[key] && state[key].level === 'hard' ? '费力完成' : '未完成') + '」的主要原因（可多选）：</p>' +
+      (level === 'hard' ? '费力完成' : '未完成') + '」的主要原因（可多选）：</p>' +
       '<div class="mplan-reasons-list">' +
       CHECKIN_REASON_OPTIONS.map(function (o) {
         const on = selected.indexOf(o.v) >= 0;
@@ -556,7 +556,7 @@
       const exEl = btn.closest('.mplan-ex');
       exEl.querySelectorAll('.mplan-pill').forEach(function (p) { p.classList.toggle('active', p === btn); });
       if (lv === 'hard' || lv === 'none') {
-        openCheckinReasonsModal(k, state[k].reasons.slice(), function (reasons) { state[k].reasons = reasons; renderReasonsTip(exEl, k); });
+        openCheckinReasonsModal(k, lv, state[k].reasons.slice(), function (reasons) { state[k].reasons = reasons; renderReasonsTip(exEl, k); });
       } else { state[k].reasons = []; renderReasonsTip(exEl, k); }
     });
 
