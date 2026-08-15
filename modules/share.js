@@ -14,6 +14,19 @@
     return decodeURIComponent(escape(atob(b64)));
   }
 
+  /* ---------- 报告类型（scope）字典：一码一报告，杜绝串号 ---------- */
+  // 与 report.js 的 buildReportDoc(ctx, scope) 完全对齐；'sarcopenia' 为肌少症模块独立报告
+  const REPORT_SCOPES = ['full', 'isokinetic', 'isotonic', 'plan', 'lifestyle'];
+  const SCOPE_LABEL = {
+    full: '综合评估报告',
+    isokinetic: '等速肌力评估报告',
+    isotonic: '等张肌力评估报告',
+    plan: '智能训练方案',
+    lifestyle: '生活方式评估报告',
+    sarcopenia: '肌少症评估报告'
+  };
+  function normScope(s) { return (REPORT_SCOPES.indexOf(s) >= 0 || s === 'sarcopenia') ? s : ''; }
+
   /* ---------- 从当前工作上下文抽取可分享数据 ---------- */
   function snapshotShareData(opts) {
     opts = opts || {};
@@ -68,11 +81,19 @@
         title: opts.title || (patient.name ? patient.name + ' 训练方案' : '训练方案')
       };
     }
-    // 肌少症模块优先：外部已准备好快照
-    if (window.__sarcSharePayload && window.__sarcSharePayload.module === 'sarcopenia') {
-      var sp0 = window.__sarcSharePayload.rec || {};
-      if (AppState.ai) sp0.ai = AppState.ai; // 若生成过 AI 解读也一并携带
-      return { v: 1, module: 'sarcopenia', sarcopenia: sp0 };
+    // 肌少症模块快照：仅在「显式声明 scope='sarcopenia'」或「调用方完全未声明 scope」时使用。
+    // 否则一旦医生此前分享过肌少症方案，残留的 __sarcSharePayload 会把等速/等张/生活方式报告
+    // 全部劫持成肌少症报告 —— 这是二维码串号的根因之一。
+    var reqScope = normScope(opts.scope);
+    var wantSarc = (reqScope === 'sarcopenia') ||
+      (!reqScope && window.__sarcSharePayload && window.__sarcSharePayload.module === 'sarcopenia');
+    if (wantSarc) {
+      var sp0 = opts.sarcoRec || (window.__sarcSharePayload && window.__sarcSharePayload.rec) || null;
+      if (sp0) {
+        if (AppState.ai) sp0.ai = AppState.ai; // 若生成过 AI 解读也一并携带
+        return { v: 1, module: 'sarcopenia', scope: 'sarcopenia', sarcopenia: sp0 };
+      }
+      // 无肌少症快照时不静默回落成体重综合报告（那会给患者看错报告），改为按 full 走并保留标记
     }
     // 递归剥离体积较大的 svg 装饰字段，避免链接过长超出二维码容量
     const strip = (o) => {
@@ -92,16 +113,21 @@
       for (const k in o) { if (k !== '_scored' && k !== '_advice') out[k] = o[k]; }
       return out;
     };
-    return {
+    // 按 scope 精简载荷：既杜绝"扫等速码看到综合报告"，又大幅缩短 base64 回落链接
+    const rs = (reqScope && reqScope !== 'sarcopenia') ? reqScope : 'full';
+    const out = {
       v: 1,
+      scope: rs,
       patient: AppState.patient || {},
-      assessment: AppState.assessment || {},
-      lifeSurvey: trimLife(AppState.lifeSurvey || {}),
-      plan: strip(AppState.plan || {}),
-      isokineticData: AppState.isokineticData || [],
-      isotonicData: AppState.isotonicData || [],
-      ai: AppState.ai || {} // 携带 AI 解读（含方案），供「分享携带 AI 结果」
+      assessment: AppState.assessment || {} // 各类报告的患者基础信息区块均依赖
     };
+    if (rs === 'full' || rs === 'lifestyle') out.lifeSurvey = trimLife(AppState.lifeSurvey || {});
+    if (rs === 'full' || rs === 'plan') out.plan = strip(AppState.plan || {});
+    if (rs === 'full' || rs === 'isokinetic') out.isokineticData = AppState.isokineticData || [];
+    if (rs === 'full' || rs === 'isotonic') out.isotonicData = AppState.isotonicData || [];
+    // AI 解读仅随「综合报告 / 训练方案」分享：肌力单项与生活方式报告若挂上综合解读同样属于串号
+    if (rs === 'full' || rs === 'plan') out.ai = AppState.ai || {};
+    return out;
   }
 
   function buildShareURL(opts) {
@@ -272,21 +298,25 @@
     const isAi = data && data.mode === 'ai';
     const isSarc = data && data.module === 'sarcopenia';
     const ai = data.ai || {};
+    // 二维码携带的 scope 决定手机端渲染哪一类报告（缺省 full 兼容历史链接）
+    const scope = normScope(data && data.scope) || 'full';
+    const scopeLabel = SCOPE_LABEL[isSarc ? 'sarcopenia' : scope] || SCOPE_LABEL.full;
     let reportHTML;
     if (isAi) {
       reportHTML = ''; // AI 模式仅展示解读，不渲染完整报告
     } else if (isSarc) {
       reportHTML = window.buildSarcReport ? window.buildSarcReport(data.sarcopenia) : '<div class="alert alert-warning">肌少症报告组件未就绪</div>';
     } else {
-      reportHTML = window.buildReportDoc ? window.buildReportDoc() : '<div class="alert alert-warning">报告组件未就绪</div>';
+      reportHTML = window.buildReportDoc ? window.buildReportDoc(null, scope) : '<div class="alert alert-warning">报告组件未就绪</div>';
     }
+    try { window.__mreportLabel = isAi ? 'AI解读' : scopeLabel; } catch (e) {}
     const hasAi = !!(ai.interpret && ai.interpret.markdown) || !!(ai.plan && (ai.plan.raw || ai.plan.plan));
     let aiBlock = hasAi ? buildAiBlock(ai) : '';
     if (isAi && !aiBlock) aiBlock = '<div class="alert alert-warning">尚未生成 AI 解读，请先在医生端生成后再分享本页。</div>';
     app.innerHTML =
       '<div class="mreport-view">' +
         '<div class="mreport-topbar no-print">' +
-          '<div class="mreport-brand"><span class="mreport-dot"></span>' + U.esc((window.CONST && CONST.SYSTEM_NAME) || '鹊动') + ' · 患者报告（只读）</div>' +
+          '<div class="mreport-brand"><span class="mreport-dot"></span>' + U.esc((window.CONST && CONST.SYSTEM_NAME) || '鹊动') + ' · ' + U.esc(isAi ? 'AI 解读（只读）' : scopeLabel + '（只读）') + '</div>' +
           '<div class="mreport-actions">' +
             '<button class="btn btn-primary btn-sm" id="mreport-save-img">🖼️ 保存图片</button>' +
             '<button class="btn btn-secondary btn-sm" id="mreport-print">📄 导出 PDF</button>' +
@@ -335,7 +365,7 @@
         window.open(url, '_blank');
         U.toast('已打开 PDF，点右上角「…」可保存到手机', 'success');
       } else {
-        pdf.save('患者报告.pdf');
+        pdf.save(((window.__mreportLabel || '患者报告')) + '.pdf');
         U.toast('PDF 已生成并开始下载', 'success');
       }
     }).catch(function (e) {
@@ -374,7 +404,7 @@
         return;
       }
       const link = document.createElement('a');
-      link.download = '患者报告.png';
+      link.download = ((window.__mreportLabel || '患者报告')) + '.png';
       link.href = dataUrl;
       document.body.appendChild(link); link.click(); link.remove();
       U.toast('图片已生成，可保存至相册', 'success');
@@ -504,6 +534,7 @@
       title: '补充原因',
       body: body,
       width: '440px',
+      cls: 'mplan-reasons-modal',
       footer: '<button class="btn btn-secondary" id="rm-cancel">取消</button><button class="btn btn-primary" id="rm-ok">确定</button>',
       onMount(ov) {
         ov.querySelectorAll('.mplan-reason-item input').forEach(function (cb) {
@@ -618,14 +649,43 @@
           '<div class="mplan-patient"><div class="mplan-patient-name">' + U.esc(pname) + '</div>' +
           '<div class="mplan-patient-tag">' + (scheme === 'sarcopenia' ? '肌少症 · 居家训练' : '体重管理 · 训练方案') + '</div></div>' +
           renderKpi() + renderTrend() +
+          '<div class="mplan-done-banner no-print" id="mplan-done" style="display:none;">' +
+            '<div class="mplan-done-icon">✅</div>' +
+            '<div class="mplan-done-text"><div class="mplan-done-title">今日打卡已完成</div>' +
+            '<div class="mplan-done-sub">今天任务全部完成啦，明天继续加油 💪</div></div>' +
+            '<button type="button" class="btn btn-ghost btn-sm mplan-redo" id="mplan-redo">重新打卡</button>' +
+          '</div>' +
+          '<div class="mplan-fill" id="mplan-fill">' +
           '<div class="mplan-section-title">今日训练（' + today + '）</div>' +
           '<div class="mplan-ex-list" id="mplan-ex-list">' + renderExList() + '</div>' +
           '<div class="mplan-foot no-print">请为每项动作选择完成度；选择「费力完成 / 未完成」可补充原因，便于医生为您调整方案。</div>' +
+          '</div>' +
         '</div>' +
         '<div class="mplan-submit-bar no-print"><button class="btn btn-primary mplan-submit" id="mplan-submit">提交今日打卡</button></div>' +
       '</div>';
 
+    const alreadyDone = existing && Array.isArray(existing.items) && existing.items.length > 0 &&
+      exercises.length > 0 && exercises.every(function (ex) {
+        const k = ex.id || ex.name; const st = state[k]; return st && st.level;
+      });
+    function showCompletion() {
+      const fill = U.qs('#mplan-fill', app); const done = U.qs('#mplan-done', app);
+      const sb = U.qs('.mplan-submit-bar', app);
+      if (fill) fill.style.display = 'none';
+      if (sb) sb.style.display = 'none';
+      if (done) done.style.display = '';
+    }
+    function showFill() {
+      const fill = U.qs('#mplan-fill', app); const done = U.qs('#mplan-done', app);
+      const sb = U.qs('.mplan-submit-bar', app);
+      if (fill) fill.style.display = '';
+      if (sb) sb.style.display = '';
+      if (done) done.style.display = 'none';
+    }
+    if (alreadyDone) showCompletion();
     const list = U.qs('#mplan-ex-list', app);
+    const redoBtn = U.qs('#mplan-redo', app);
+    if (redoBtn) redoBtn.onclick = showFill;
     function renderReasonsTip(exEl, k) {
       const lv = state[k].level;
       let tipEl = exEl.querySelector('.mplan-reasons-tip');
@@ -660,6 +720,7 @@
         });
         if (r.ok) {
           U.toast('今日打卡已提交，感谢配合！', 'success');
+          showCompletion();
           try {
             const r2 = await fetch(checkinApiBase() + '/api/checkin/summary?pid=' + encodeURIComponent(pid) + '&days=7');
             if (r2.ok) { const j = await r2.json(); if (j && j.ok) summary = j.summary; }
@@ -778,7 +839,13 @@
     let created = null;
     try { created = await createShareToken(opts); } catch (e) { created = null; }
     const usingShort = !!(created && created.url);
-    const url = usingShort ? created.url : (isAi ? buildShareURL({ mode: 'ai' }) : isPlan ? buildShareURL({ mode: 'plan', scheme: opts.scheme, title: opts.title }) : buildShareURL());
+    const qScope = normScope(opts.scope);
+    const qLabel = isPlan ? '训练方案' : (isAi ? 'AI 解读' : (SCOPE_LABEL[qScope] || SCOPE_LABEL.full));
+    const url = usingShort ? created.url : (isAi
+      ? buildShareURL({ mode: 'ai' })
+      : isPlan
+      ? buildShareURL({ mode: 'plan', scheme: opts.scheme, title: opts.title, sarcoRec: opts.sarcoRec })
+      : buildShareURL({ scope: qScope, sarcoRec: opts.sarcoRec }));
     let qrImg = '';
     let qrErr = '';
     try {
@@ -795,7 +862,7 @@
       ? '患者/家属使用微信或相机扫码即可查看本次 AI 解读（含推荐方案）。建议通过<b>部署后的 http(s) 地址</b>分享。'
       : isPlan
       ? '患者/家属使用微信或相机扫码即可在手机上查看您的训练方案并每日打卡，数据将回传至系统供您查看。建议通过<b>部署后的 http(s) 地址</b>分享。'
-      : '患者使用微信/相机扫码即可在手机上查看本报告（含智能运动方案）。建议通过<b>部署后的 http(s) 地址</b>分享。');
+      : '患者使用微信/相机扫码即可在手机上查看<b>' + U.esc(qLabel) + '</b>（本码只对应该份报告，不会串到其他报告）。建议通过<b>部署后的 http(s) 地址</b>分享。');
     const body = `
       <p class="text-muted" style="font-size:13px;line-height:1.7;">${introText}</p>
       <div class="qr-box">
@@ -809,7 +876,7 @@
     `;
 
     const { overlay, close } = U.modal({
-      title: isPlan ? '📲 生成训练打卡分享二维码' : (isAi ? '📲 生成 AI 解读分享页' : '📲 生成患者分享二维码'),
+      title: isPlan ? '📲 生成训练打卡分享二维码' : (isAi ? '📲 生成 AI 解读分享页' : '📲 生成「' + qLabel + '」分享二维码'),
       body,
       width: '460px',
       footer: `
@@ -832,7 +899,7 @@
         const dl = ov.querySelector('#share-dl');
         if (dl) dl.onclick = () => {
           const a = document.createElement('a');
-          a.href = qrImg; a.download = '患者报告二维码.png';
+          a.href = qrImg; a.download = qLabel + '二维码.png';
           document.body.appendChild(a); a.click(); a.remove();
           U.toast('二维码已下载', 'success');
         };
@@ -858,13 +925,16 @@
   }
 
   /* 生成可嵌入"打印 / 导出报告"的方案二维码块（离线可用 data-URI 图片）。
-     opts: { mode:'plan'|'report'|'ai', scheme:'weight'|'sarcopenia', title, sarcoRec }
+     opts: { mode:'plan'|'report'|'ai', scope:'full'|'isokinetic'|'isotonic'|'plan'|'lifestyle'|'sarcopenia',
+             scheme:'weight'|'sarcopenia', title, sarcoRec }
+     ⚠️ mode='report' 时务必显式传 scope —— 否则纸质报告上的码会回落到综合报告（串号）。
      返回 HTML 字符串；生成失败返回空串（不影响原报告打印）。
      优先走服务端短链（链接短、易扫描、可撤销），失败回落本地 base64。 */
   async function buildPlanQrBlock(opts) {
     opts = opts || {};
     const isPlan = opts.mode === 'plan';
     const isAi = opts.mode === 'ai';
+    const bScope = normScope(opts.scope);
     let url = '';
     try {
       const created = await createShareToken(Object.assign({ mode: opts.mode }, opts));
@@ -874,7 +944,7 @@
       try {
         if (isPlan) url = buildShareURL({ mode: 'plan', scheme: opts.scheme, title: opts.title, sarcoRec: opts.sarcoRec });
         else if (isAi) url = buildShareURL({ mode: 'ai' });
-        else url = buildShareURL();
+        else url = buildShareURL({ scope: bScope, sarcoRec: opts.sarcoRec });
       } catch (e) { url = ''; }
     }
     if (!url) return '';
@@ -886,15 +956,21 @@
       qrImg = qr.createDataURL(6, 10);
     } catch (e) { qrImg = ''; }
     if (!qrImg) return '';
+    const bLabel = SCOPE_LABEL[bScope] || SCOPE_LABEL.full;
     const caption = isPlan
       ? '📱 扫码在手机上查看本训练方案，并每日完成训练打卡'
-      : (isAi ? '📱 扫码在手机上查看本次 AI 解读' : '📱 扫码在手机上查看您的评估报告');
+      : (isAi ? '📱 扫码在手机上查看本次 AI 解读' : '📱 扫码在手机上查看本份《' + bLabel + '》');
+    const subCaption = isPlan
+      ? '每日按动作逐项打卡，医生可在系统内看到您的执行情况'
+      : (isAi ? '解读结果须经专业人员确认' : '本码仅对应本份报告，与其他报告二维码互不相同');
     const note = (url.length > 1800) ? '<div style="font-size:10px;color:#b91c1c;margin-top:4px;">链接较长，若扫码失败可直接发送下方链接</div>' : '';
     return ''
-      + '<div class="print-share-qr" style="display:flex;align-items:center;gap:16px;margin-top:24px;padding:16px;border:1px dashed #cbd5e1;border-radius:10px;background:#f8fafc;page-break-inside:avoid;">'
+      + '<div class="print-share-qr" data-qr-scope="' + U.esc(isPlan ? ('plan:' + (opts.scheme || 'weight')) : (isAi ? 'ai' : (bScope || 'full'))) + '"'
+      + ' style="display:flex;align-items:center;gap:16px;margin-top:24px;padding:16px;border:1px dashed #cbd5e1;border-radius:10px;background:#f8fafc;page-break-inside:avoid;">'
       + '<img src="' + qrImg + '" alt="QR" style="width:128px;height:128px;flex:0 0 auto;background:#fff;"/>'
       + '<div style="flex:1 1 auto;font-size:13px;line-height:1.6;color:#334155;">'
       + '<div style="font-weight:700;font-size:14px;color:#0f172a;margin-bottom:4px;">' + caption + '</div>'
+      + '<div style="font-size:11.5px;color:#475569;margin-bottom:4px;">' + subCaption + '</div>'
       + '<div style="font-size:11px;color:#64748b;word-break:break-all;">链接：' + U.esc(url) + '</div>'
       + note
       + '</div></div>';
@@ -907,6 +983,9 @@
     buildPlanQrBlock,
     openAIQRModal: function () { openQRModal({ mode: 'ai' }); },
     openPlanQRModal: function (opts) { openQRModal(Object.assign({ mode: 'plan' }, opts || {})); },
+    // 报告类分享统一入口：scope 决定手机端渲染哪一份报告（full/isokinetic/isotonic/plan/lifestyle/sarcopenia）
+    openReportQRModal: function (scope, opts) { openQRModal(Object.assign({ mode: 'report', scope: scope }, opts || {})); },
+    SCOPE_LABEL: SCOPE_LABEL,
     renderMobilePlan,
     buildShareURL,
     decodeShare,

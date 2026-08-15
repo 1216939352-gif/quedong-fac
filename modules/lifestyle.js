@@ -107,15 +107,21 @@
       out.innerHTML = window.buildReportDoc(null, 'lifestyle') +
         `<div class="no-print" style="margin-top:12px;display:flex;gap:10px;">
           <button class="btn btn-primary btn-sm" id="btn-print-life">打印 / 导出本报告</button>
+          <button class="btn btn-secondary btn-sm" id="btn-share-life">📲 分享二维码</button>
           <a class="btn btn-ghost btn-sm" href="#/report">前往报告管理中心</a>
         </div>`;
-      U.qs('#btn-print-life', out).onclick = () => {
+      U.qs('#btn-print-life', out).onclick = async () => {
         const stage = document.getElementById('report-print-stage') ||
           (() => { const s = document.createElement('div'); s.id = 'report-print-stage'; document.body.appendChild(s); return s; })();
-        stage.innerHTML = window.buildReportDoc(null, 'lifestyle');
+        let html = window.buildReportDoc(null, 'lifestyle');
+        try { const qb = await window.Share.buildPlanQrBlock({ mode: 'report', scope: 'lifestyle' }); if (qb) html += qb; } catch (e) {}
+        stage.innerHTML = html;
         const clear = () => { stage.innerHTML = ''; window.onafterprint = null; };
         window.onafterprint = clear;
         setTimeout(() => window.print(), 60);
+      };
+      U.qs('#btn-share-life', out).onclick = () => {
+        if (window.Share) window.Share.openReportQRModal('lifestyle'); else U.toast('分享组件未加载', 'warning');
       };
     }
 

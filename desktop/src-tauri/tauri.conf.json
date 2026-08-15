@@ -1,0 +1,50 @@
+{
+  "build": {
+    "beforeDevCommand": "echo",
+    "devPath": "https://angelic-cooperation-production-5761.up.railway.app",
+    "beforeBuildCommand": "echo",
+    "distDir": "../dist"
+  },
+  "package": {
+    "productName": "鹊动健康",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "windows": [
+      {
+        "title": "鹊动健康",
+        "url": "https://angelic-cooperation-production-5761.up.railway.app",
+        "width": 1280,
+        "height": 840,
+        "minWidth": 960,
+        "minHeight": 640,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "allowlist": {
+      "all": false,
+      "shell": {
+        "open": true
+      },
+      "window": {
+        "all": true
+      }
+    },
+    "bundle": {
+      "active": true,
+      "targets": "nsis",
+      "identifier": "com.quedong.health",
+      "icon": [
+        "icons/icon.png",
+        "icons/icon.ico"
+      ],
+      "shortDescription": "鹊动健康桌面端",
+      "longDescription": "鹊动体重/肌少症管理系统桌面客户端（云端同步）"
+    }
+  }
+}

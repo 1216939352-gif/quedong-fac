@@ -1978,6 +1978,28 @@ body { font-size: var(--fs-base); }
 .mplan-reason-item.checked { border-color: var(--primary, #f26522); background: var(--primary-soft, rgba(242,101,34,0.18)); }
 .mplan-reason-item input { width: 18px; height: 18px; accent-color: var(--primary, #f26522); }
 
+/* 原因弹窗强制实底 + 高对比（玻璃皮肤下不再透背景 / 看不清字） */
+.mplan-reasons-modal { background: #ffffff !important; color: #0f172a; }
+.mplan-reasons-modal .modal-header { background: #ffffff; color: #0f172a; border-bottom-color: #e2e8f0; }
+.mplan-reasons-modal .modal-header h3 { color: #0f172a; }
+.mplan-reasons-modal .modal-body { color: #0f172a; }
+.mplan-reasons-modal .modal-body .text-muted { color: #475569 !important; }
+.mplan-reasons-modal .modal-footer { background: #ffffff; }
+.mplan-reasons-modal .mplan-reason-item { background: #ffffff; color: #0f172a; border-color: #e2e8f0; }
+.mplan-reasons-modal .mplan-reason-item.checked { border-color: var(--primary, #f26522); background: var(--primary-soft, rgba(242,101,34,0.18)); color: #0f172a; }
+
+/* 打卡完成态：绿色完成条 + 鼓励语（填写明细默认隐藏，仅显示记录） */
+.mplan-done-banner {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--success-bg, #dcfce7); border: 1px solid var(--success, #16a34a);
+  border-radius: var(--radius-lg, 16px); padding: 16px 18px; margin: 4px 0 14px;
+}
+.mplan-done-icon { font-size: 30px; line-height: 1; flex: none; }
+.mplan-done-text { flex: 1 1 auto; }
+.mplan-done-title { font-size: 16px; font-weight: 800; color: var(--success, #16a34a); }
+.mplan-done-sub { font-size: 13px; color: var(--text-secondary, #475569); margin-top: 2px; }
+.mplan-redo { flex: none; }
+
 /* 手机端窄屏：指标与完成度药丸改为 2 列，避免拥挤 */
 @media (max-width: 480px) {
   .te-metric-row, .te-bd-kpi-row { grid-template-columns: repeat(2, 1fr); }

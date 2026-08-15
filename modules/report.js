@@ -593,7 +593,7 @@
     if (!body) return;
     let html = body.innerHTML;
     try {
-      const qb = await window.Share.buildPlanQrBlock({ mode: 'report' });
+      const qb = await window.Share.buildPlanQrBlock({ mode: 'report', scope: 'isokinetic' });
       if (qb) html += qb;
     } catch (e) { /* 二维码生成失败不影响打印 */ }
     window.printReportHTML(html);
@@ -603,18 +603,18 @@
     if (!body) return;
     let html = body.innerHTML;
     try {
-      const qb = await window.Share.buildPlanQrBlock({ mode: 'report' });
+      const qb = await window.Share.buildPlanQrBlock({ mode: 'report', scope: 'isotonic' });
       if (qb) html += qb;
     } catch (e) { /* 二维码生成失败不影响打印 */ }
     window.printReportHTML(html);
   };
   window.shareIsoReport = function () {
     if (!AppState.patient || !AppState.patient.id) { U.toast('请先在上方选择患者', 'warning'); return; }
-    if (window.Share) window.Share.openQRModal(); else U.toast('分享组件未加载', 'warning');
+    if (window.Share) window.Share.openReportQRModal('isokinetic'); else U.toast('分享组件未加载', 'warning');
   };
   window.shareIotReport = function () {
     if (!AppState.patient || !AppState.patient.id) { U.toast('请先在上方选择患者', 'warning'); return; }
-    if (window.Share) window.Share.openQRModal(); else U.toast('分享组件未加载', 'warning');
+    if (window.Share) window.Share.openReportQRModal('isotonic'); else U.toast('分享组件未加载', 'warning');
   };
 
   /* ================= 报告管理中心 ================= */
@@ -932,29 +932,44 @@
         ${renderDirectionCats(activeDir, p)}`;
       catsEl.scrollIntoView({ behavior: 'smooth' });
 
-      U.qsa('.cat-view', catsEl).forEach(btn => btn.addEventListener('click', () => {
+      U.qsa('.cat-view', catsEl).forEach(btn => btn.addEventListener('click', async () => {
         const key = btn.dataset.key;
-        printHTML(window.buildReportDoc(ctxOf(p.id), key));
+        let html = window.buildReportDoc(ctxOf(p.id), key);
+        try { const qb = await window.Share.buildPlanQrBlock({ mode: 'report', scope: key }); if (qb) html += qb; } catch (e) { /* 二维码失败不影响查看 */ }
+        printHTML(html);
       }));
-      U.qs('#rep-combine', catsEl).addEventListener('click', () => {
+      U.qs('#rep-combine', catsEl).addEventListener('click', async () => {
         const keys = U.qsa('.cat-check', catsEl).filter(c => c.checked && !c.disabled).map(c => c.value);
         if (!keys.length) { U.toast('请至少勾选一类报告', 'warning'); return; }
         const order = ['full', 'plan', 'lifestyle', 'isokinetic', 'isotonic'];
         const validKeys = order.filter(k => keys.includes(k));
-        const html = validKeys.map(k => window.buildReportDoc(ctxOf(p.id), k)).join('<hr class="report-divider"/>');
-        printHTML(html);
+        const parts = [];
+        for (const k of validKeys) {
+          let h = window.buildReportDoc(ctxOf(p.id), k);
+          try { const qb = await window.Share.buildPlanQrBlock({ mode: 'report', scope: k }); if (qb) h += qb; } catch (e) {}
+          parts.push(h);
+        }
+        printHTML(parts.join('<hr class="report-divider"/>'));
       });
-      U.qs('#rep-export-pdf', catsEl).addEventListener('click', () => {
+      U.qs('#rep-export-pdf', catsEl).addEventListener('click', async () => {
         const ctx = ctxOf(p.id);
         const allCats = DIRECTIONS.flatMap(d => d.cats);
         const order = allCats.filter(c => c.docable && catHas(c, ctx)).map(c => c.key);
         if (!order.length) { U.toast('该患者在当前方向无可打印报告', 'warning'); return; }
-        const html = order.map(k => window.buildReportDoc(ctx, k)).join('<hr class="report-divider"/>');
-        printHTML(html);
+        const parts = [];
+        for (const k of order) {
+          let h = window.buildReportDoc(ctx, k);
+          try { const qb = await window.Share.buildPlanQrBlock({ mode: 'report', scope: k }); if (qb) h += qb; } catch (e) {}
+          parts.push(h);
+        }
+        printHTML(parts.join('<hr class="report-divider"/>'));
       });
       U.qs('#rep-share', catsEl).addEventListener('click', async () => {
         await loadPatientContext(p.id);
-        if (window.Share) window.Share.openQRModal();
+        const dir = DIRECTIONS.find(d => d.key === activeDir);
+        const repCat = dir && (dir.cats.find(c => c.docable) || dir.cats[0]);
+        const shareScope = repCat ? repCat.key : 'full';
+        if (window.Share) window.Share.openReportQRModal(shareScope);
       });
     }
 

@@ -1,0 +1,18 @@
+[package]
+name = "quedong-desktop"
+version = "0.1.0"
+description = "鹊动健康 桌面客户端"
+edition = "2021"
+
+[features]
+# Tauri v1 构建时 CLI 会执行 `cargo build --features custom-protocol`，
+# 需要在此把该 feature 重导出到 tauri crate，否则报 "does not contain this feature" 错误。
+custom-protocol = ["tauri/custom-protocol"]
+
+[build-dependencies]
+tauri-build = { version = "1", features = [] }
+
+[dependencies]
+tauri = { version = "1", features = ["shell-open", "window-all"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

@@ -222,7 +222,7 @@ const U = {
   },
 
   /* 模态框 */
-  modal({ title, body, footer, width, onMount }) {
+  modal({ title, body, footer, width, onMount, cls }) {
     if (!arguments[0]) {
       document.querySelectorAll('.modal-overlay').forEach(o => o.remove());
       return { overlay: null, close() {} };
@@ -230,7 +230,7 @@ const U = {
     const w = width ? (typeof width === 'number' ? width + 'px' : String(width)) : '';
     const overlay = U.el(`
       <div class="modal-overlay">
-        <div class="modal" style="${w ? `max-width:min(${w}, calc(100vw - 32px));` : ''}">
+        <div class="modal${cls ? ' ' + cls : ''}" style="${w ? `max-width:min(${w}, calc(100vw - 32px));` : ''}">
           <div class="modal-header">
             <h3 style="margin:0;font-size:17px;">${U.esc(title || '')}</h3>
             <button class="btn btn-ghost btn-sm modal-close">✕</button>
