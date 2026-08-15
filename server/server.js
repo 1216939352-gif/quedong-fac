@@ -221,7 +221,17 @@ registerMigration('ops_err_report_status', function (db) {
     if (!cols.includes('status')) db.exec("ALTER TABLE errors ADD COLUMN status TEXT DEFAULT 'open'");
     if (!cols.includes('note')) db.exec('ALTER TABLE errors ADD COLUMN note TEXT');
     if (!cols.includes('resolved_at')) db.exec('ALTER TABLE errors ADD COLUMN resolved_at TEXT');
-    if (!cols.includes('updated_at')) db.exec("ALTER TABLE errors ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))");
+    if (!cols.includes('updated_at')) db.exec('ALTER TABLE errors ADD COLUMN updated_at TEXT');
+  } catch (e) { /* 字段已存在则忽略 */ }
+});
+
+// ops: 兜底补齐——部分已部署实例首跑 ops_err_report_status 时，updated_at 因
+// "Cannot add a column with non-constant default" 报错被 try/catch 吞掉，导致该列缺失；
+// 此处幂等补齐（纯 TEXT，无默认）。老迁移已被标记为 done 不会再执行，故需独立迁移。
+registerMigration('ops_err_report_updated_at', function (db) {
+  try {
+    const cols = db.prepare('PRAGMA table_info(errors)').all().map(c => c.name);
+    if (!cols.includes('updated_at')) db.exec('ALTER TABLE errors ADD COLUMN updated_at TEXT');
   } catch (e) { /* 字段已存在则忽略 */ }
 });
 
@@ -553,6 +563,16 @@ app.get('/api/err-report', authMiddleware, adminOnly, (req, res) => {
   res.json({ count: rows.length, rows });
 });
 
+// errors 表列缓存（惰性计算一次），用于防御性跳过缺失列，避免 UPDATE 报 500
+let _errorsColsCache = null;
+function errorsHasCol(name) {
+  if (_errorsColsCache === null) {
+    try { _errorsColsCache = db.prepare('PRAGMA table_info(errors)').all().map(c => c.name); }
+    catch { _errorsColsCache = []; }
+  }
+  return _errorsColsCache.includes(name);
+}
+
 // 报错状态更新（管理员；报修闭环：标记 待处理/处理中/已解决 + 备注）
 app.patch('/api/admin/err-report/:id', authMiddleware, adminOnly, (req, res) => {
   const id = parseInt(req.params.id, 10);
@@ -570,7 +590,7 @@ app.patch('/api/admin/err-report/:id', authMiddleware, adminOnly, (req, res) => 
       vals.push(b.status === 'resolved' ? new Date().toISOString() : null);
     }
     if (b.note !== undefined) { sets.push('note=?'); vals.push(String(b.note || '').slice(0, 2000)); }
-    sets.push('updated_at=?'); vals.push(new Date().toISOString());
+    if (errorsHasCol('updated_at')) { sets.push('updated_at=?'); vals.push(new Date().toISOString()); }
     vals.push(id);
     db.prepare('UPDATE errors SET ' + sets.join(',') + ' WHERE id=?').run(...vals);
     res.json({ ok: true });
