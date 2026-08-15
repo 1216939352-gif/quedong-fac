@@ -38,6 +38,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const express = require('express');
+const { spawn } = require('child_process');
 const { DatabaseSync } = require('node:sqlite');
 const logger = require('./lib/logger');
 
@@ -701,6 +702,116 @@ app.post('/api/admin/backup', authMiddleware, adminOnly, (req, res) => {
   }
 });
 
+// ───────── 批次0：运维工作台地基（聚合状态 / 自动备份 / 外部下载）─────────
+// 以下均为“加法”，不改动任何既有接口与功能。
+
+// 备份状态 helper（供 /api/admin/ops/status 与下载接口复用）
+function getBackupStatus() {
+  const base = { backupDir: BACKUP_DIR, sameAsData: BACKUP_DIR.indexOf(DATA_DIR) === 0 };
+  try {
+    if (!fs.existsSync(BACKUP_DIR)) return Object.assign({ exists: false, count: 0, lastBackup: null, lastBackupTs: null }, base);
+    const dirs = fs.readdirSync(BACKUP_DIR)
+      .filter(d => { try { return fs.statSync(path.join(BACKUP_DIR, d)).isDirectory(); } catch (e) { return false; } })
+      .sort();
+    if (!dirs.length) return Object.assign({ exists: true, count: 0, lastBackup: null, lastBackupTs: null }, base);
+    const last = dirs[dirs.length - 1];
+    let ts = null;
+    try { ts = (JSON.parse(fs.readFileSync(path.join(BACKUP_DIR, last, 'manifest.json'), 'utf8')).createdAt) || null; } catch (e) {}
+    return Object.assign({ exists: true, count: dirs.length, lastBackup: last, lastBackupTs: ts }, base);
+  } catch (e) {
+    return Object.assign({ exists: false, error: String(e.message || e), count: 0, lastBackup: null, lastBackupTs: null }, base);
+  }
+}
+
+// 安全计数：表/列缺失时返回 -1，不抛错中断状态聚合
+function safeCount(sql, params) {
+  try {
+    const stmt = db.prepare(sql);
+    const row = stmt.get.apply(stmt, params || []);
+    return row ? row.c : 0;
+  } catch (e) { return -1; }
+}
+
+// 业务库文件体积（含 WAL）
+function dbFileSize() {
+  const p = path.join(DATA_DIR, 'app.db');
+  let bytes = 0, ok = true;
+  [p, p + '-wal', p + '-shm'].forEach(f => { try { bytes += fs.statSync(f).size; } catch (e) { ok = false; } });
+  return { bytes: bytes, human: _backup.human(bytes), readable: ok };
+}
+
+// 聚合状态（管理员）：一次请求返回健康 / 业务指标 / 错误数 / 备份状态 / 卷状态
+app.get('/api/admin/ops/status', authMiddleware, adminOnly, (req, res) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10); // UTC YYYY-MM-DD
+    const todayStart = new Date(today + 'T00:00:00Z').toISOString();
+    const counts = {
+      users: safeCount('SELECT COUNT(*) c FROM users'),
+      patients: safeCount('SELECT COUNT(*) c FROM patients'),
+      assessmentsToday: safeCount("SELECT COUNT(*) c FROM assessments WHERE created_at >= ?", [todayStart]),
+      reportsToday: safeCount("SELECT COUNT(*) c FROM reports WHERE created_at >= ?", [todayStart]),
+      checkinsToday: safeCount('SELECT COUNT(*) c FROM checkins WHERE date = ?', [today]),
+      errorsToday: safeCount("SELECT COUNT(*) c FROM errors WHERE ts >= ?", [todayStart]),
+      errorsTotal: safeCount('SELECT COUNT(*) c FROM errors')
+    };
+    res.json({
+      ok: true,
+      generatedAt: Date.now(),
+      health: { ok: true, uptimeSec: Math.round(process.uptime()), node: process.versions.node, ts: Date.now() },
+      dbSize: dbFileSize(),
+      counts: counts,
+      backup: getBackupStatus(),
+      volume: {
+        dataDir: DATA_DIR,
+        railwayVolumeMount: process.env.RAILWAY_VOLUME_MOUNT_PATH || null,
+        railwayEnv: process.env.RAILWAY_ENVIRONMENT || null
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// 下载最新备份（tar.gz 流式下载，便于管理员异地保存，防同机共毁）
+app.get('/api/admin/backup/download', authMiddleware, adminOnly, (req, res) => {
+  try {
+    const st = getBackupStatus();
+    if (!st.lastBackup) return res.status(404).json({ error: '暂无备份可下载，请先执行一次备份' });
+    const name = st.lastBackup;
+    res.setHeader('Content-Type', 'application/gzip');
+    res.setHeader('Content-Disposition', 'attachment; filename="quedong-backup-' + name + '.tar.gz"');
+    const child = spawn('tar', ['-czf', '-', '-C', BACKUP_DIR, name]);
+    child.stdout.pipe(res);
+    child.on('error', (e) => { if (!res.headersSent) res.status(500).json({ error: '打包失败：' + String(e.message || e) }); });
+    child.on('close', (code) => {
+      if (res.headersSent) return;
+      if (code !== 0) res.status(500).end('tar 进程异常退出（code ' + code + '）');
+      else res.end();
+    });
+  } catch (e) {
+    if (!res.headersSent) res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// 自动每日备份：启动即补备（若超 24h 无备份）+ 每天 02:00 例行备份
+function startAutoBackup() {
+  const _do = () => {
+    try { const dest = runBackup(); logger.info('[auto-backup] 完成：' + dest); }
+    catch (e) { logger.error('[auto-backup] 失败：' + (e && e.stack ? e.stack : e)); }
+  };
+  try {
+    const st = getBackupStatus();
+    const stale = !st.lastBackup || (st.lastBackupTs && (Date.now() - new Date(st.lastBackupTs).getTime() > 24 * 3600 * 1000));
+    if (stale) _do();
+  } catch (e) {}
+  const now = new Date();
+  const next = new Date(now); next.setHours(2, 0, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
+  const ms = next - now;
+  setTimeout(() => { _do(); setInterval(_do, 24 * 3600 * 1000); }, ms);
+  logger.info('[auto-backup] 已排程，下次例行备份：' + next.toISOString());
+}
+
 // 静态托管前端（开发/局域网环境禁用浏览器缓存，避免 iframe/硬刷新问题）
 app.use(express.static(STATIC_DIR, {
   extensions: ['html'],
@@ -758,4 +869,8 @@ if (require.main === module) {
     logger.info(`[quedong-backend] 静态目录: ${STATIC_DIR}`);
     logger.info(`[quedong-backend] 数据库:   ${path.join(DATA_DIR, 'app.db')}`);
   });
+  // 批次0-2：自动每日备份 + 启动即补备（若超过 24h 无备份）；测试/禁用变量下不启用
+  if (process.env.NODE_ENV !== 'test' && process.env.DISABLE_AUTO_BACKUP !== '1') {
+    startAutoBackup();
+  }
 }
