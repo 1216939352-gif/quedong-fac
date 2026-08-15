@@ -46,10 +46,31 @@ const logger = require('./lib/logger');
 const PORT = parseInt(process.env.PORT || '8080', 10);
 const ROOT = __dirname;
 const STATIC_DIR = process.env.STATIC_DIR || path.join(ROOT, '..', '_dl3');
-const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(ROOT, 'data');
+// 优先使用 Railway 持久卷（挂载后自动注入 RAILWAY_VOLUME_MOUNT_PATH），否则退回本地 ./data
+const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR)
+  : (process.env.RAILWAY_VOLUME_MOUNT_PATH ? path.resolve(process.env.RAILWAY_VOLUME_MOUNT_PATH) : path.join(ROOT, 'data'));
 const MEDIA_DIR = process.env.MEDIA_DIR ? path.resolve(process.env.MEDIA_DIR) : path.join(DATA_DIR, 'media');
 const BACKUP_DIR = process.env.BACKUP_DIR ? path.resolve(process.env.BACKUP_DIR) : path.join(DATA_DIR, 'backups');
 [DATA_DIR, MEDIA_DIR, BACKUP_DIR].forEach(d => fs.mkdirSync(d, { recursive: true }));
+
+// 持久卷迁移（仅 Railway 挂载卷时生效，且为“拷贝非移动”，失败不影响启动）
+// 场景：挂载卷后首次启动，若卷内无库但旧 ./data 有库，则把旧数据拷入卷，避免重部署清空历史。
+(function migrateToVolumeIfNeeded() {
+  const vmp = process.env.RAILWAY_VOLUME_MOUNT_PATH;
+  if (!vmp) return;
+  const volData = path.resolve(vmp);
+  const legData = path.join(ROOT, 'data');
+  const volDb = path.join(volData, 'app.db');
+  const legDb = path.join(legData, 'app.db');
+  if (fs.existsSync(legDb) && !fs.existsSync(volDb)) {
+    try {
+      fs.mkdirSync(volData, { recursive: true });
+      const { copyDir } = require('./lib-backup.js');
+      copyDir(legData, volData);
+      logger.info('[volume-migrate] 已将旧数据迁移至持久卷: ' + volData);
+    } catch (e) { logger.error('[volume-migrate] 迁移失败: ' + (e && e.stack ? e.stack : e)); }
+  }
+})();
 
 // 持久化签名密钥（首次运行生成，重启后保持一致，令牌才不会失效）
 const SECRET_FILE = path.join(DATA_DIR, '.secret');
