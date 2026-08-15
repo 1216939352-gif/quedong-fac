@@ -46,6 +46,14 @@
     return isNaN(d.getTime()) ? String(ts) : (U.fmtDate ? U.fmtDate(d.toISOString(), true) : String(ts));
   }
 
+  function humanBytes(n) {
+    n = Number(n) || 0;
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
+    return (n / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+  }
+
   const LEVEL_COLOR = { error: '#e5484d', resource: '#e5484d', unhandledrejection: '#f5a524', console: '#f5a524', warn: '#f5a524', info: '#12a594' };
   const STATUS_META = {
     open: { label: '待处理', color: '#e5484d', bg: 'rgba(229,72,77,.12)' },
@@ -67,6 +75,7 @@
       <button class="btn btn-ghost ops-tab active" data-tab="status">💡 系统状态</button>
       <button class="btn btn-ghost ops-tab" data-tab="err">🐞 报错报修</button>
       <button class="btn btn-ghost ops-tab" data-tab="backup">🛡 数据备份</button>
+      <button class="btn btn-ghost ops-tab" data-tab="restore">♻ 数据恢复</button>
     </div>
 
     <div class="ops-panel" id="ops-panel-status">
@@ -78,6 +87,9 @@
     <div class="ops-panel" id="ops-panel-backup" style="display:none;">
       <div class="card"><div class="card-header" style="display:flex;justify-content:space-between;align-items:center;"><h3 class="card-title">数据备份与异地保存</h3><button class="btn btn-secondary btn-sm" id="ops-backup-refresh">刷新</button></div><div class="card-body" id="ops-backup-body"><p class="text-muted">点击「刷新」查看备份状态</p></div></div>
     </div>
+    <div class="ops-panel" id="ops-panel-restore" style="display:none;">
+      <div class="card"><div class="card-header" style="display:flex;justify-content:space-between;align-items:center;"><h3 class="card-title">数据恢复（整库还原）</h3><button class="btn btn-secondary btn-sm" id="ops-restore-refresh">刷新</button></div><div class="card-body" id="ops-restore-body"><p class="text-muted">点击「刷新」加载可用备份点</p></div></div>
+    </div>
     `;
 
     const root = U.el(`<div>${html}</div>`);
@@ -88,7 +100,7 @@
         U.qsa('.ops-tab', root).forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         const tab = btn.getAttribute('data-tab');
-        ['status', 'err', 'backup'].forEach(t => {
+        ['status', 'err', 'backup', 'restore'].forEach(t => {
           U.qs('#ops-panel-' + t, root).style.display = (t === tab) ? '' : 'none';
         });
       });
@@ -117,7 +129,7 @@
             await loginBackend(u, p);
             U.toast('success', '令牌已获取');
             renderAuth();
-            loadStatus(); loadErr(); loadBackup();
+            loadStatus(); loadErr(); loadBackup(); loadRestore();
           } catch (e) { U.toast('error', errMsg(e)); }
         });
       }
@@ -271,11 +283,68 @@
       });
     }
 
+    // ── 模块4：数据恢复（整库还原，两步确认 + 还原前自动快照）──
+    async function loadRestore() {
+      const body = U.qs('#ops-restore-body', root);
+      body.innerHTML = '<p class="text-muted">加载中…</p>';
+      let d;
+      try { d = await (await apiFetch('/api/admin/backups')).json(); }
+      catch (e) { if (e.code === 'NO_TOKEN' || e.code === 'TOKEN_EXPIRED') return needLogin(); body.innerHTML = `<p class="text-muted">加载失败：${U.esc(errMsg(e))}</p>`; return; }
+      const list = (d.backups || []);
+      if (!list.length) {
+        body.innerHTML = '<p class="text-muted text-center" style="padding:18px;">暂无可用备份点。请先到「数据备份」生成备份，再回到此处做整库还原。</p>';
+        return;
+      }
+      const rowHtml = list.map(b => `
+        <div class="ops-bk-row" data-name="${U.esc(b.name)}" style="border:1px solid var(--border,#e5e7eb);border-radius:12px;padding:12px;margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+            <div>
+              <div style="font-weight:600;">📦 ${U.esc(b.name)}</div>
+              <div class="text-muted" style="font-size:12px;">${U.esc(fmtTs(b.createdAt))}${b.dbBytes != null ? ' · 库 ' + humanBytes(b.dbBytes) : ''}${b.mediaFiles != null ? ' · 媒体 ' + b.mediaFiles + ' 文件' : ''}</div>
+            </div>
+            <button class="btn btn-warning btn-sm ops-bk-restore">♻ 恢复到此备份</button>
+          </div>
+          <div class="ops-bk-confirm" style="display:none;margin-top:10px;padding:10px;border-radius:10px;background:rgba(229,72,77,.08);"></div>
+        </div>`).join('');
+      body.innerHTML = `
+        <div class="alert alert-warning" style="margin-bottom:12px;">
+          ⚠️ <b>整库还原</b>会用所选备份点<b>覆盖当前全部数据</b>（患者、医生、报告等），影响所有用户，且执行后立即重启服务。<br/>
+          系统会<b>先自动对当前状态生成一份快照</b>（可在「数据备份」中下载找回），执行后仍可借此回退。请谨慎操作。
+        </div>
+        ${rowHtml}`;
+      U.qsa('.ops-bk-restore', body).forEach(btn => {
+        btn.addEventListener('click', () => {
+          const row = btn.closest('.ops-bk-row');
+          const name = row.getAttribute('data-name');
+          const box = U.qs('.ops-bk-confirm', row);
+          box.innerHTML = `
+            <div style="font-size:13px;color:#e5484d;margin-bottom:8px;">确认用备份 <b>${U.esc(name)}</b> 覆盖当前全部数据？此操作会重启服务，覆盖后原数据需靠刚才自动生成的快照找回。</div>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-danger btn-sm ops-bk-do">确认恢复（执行后重启）</button>
+              <button class="btn btn-ghost btn-sm ops-bk-cancel">取消</button>
+            </div>`;
+          box.style.display = 'block';
+          U.qs('.ops-bk-cancel', box).addEventListener('click', () => { box.style.display = 'none'; box.innerHTML = ''; });
+          U.qs('.ops-bk-do', box).addEventListener('click', async (ev) => {
+            ev.target.disabled = true; ev.target.textContent = '恢复中…';
+            try {
+              const r = await apiFetch('/api/admin/restore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+              const j = await r.json();
+              box.innerHTML = `<div style="color:var(--success,#12a594);font-size:13px;">✅ ${U.esc(j.message || '恢复成功')}。服务即将重启，页面会自动刷新，请稍候重新登录。</div>`;
+              setTimeout(() => location.reload(), 2500);
+            } catch (e) { if (e.code === 'NO_TOKEN' || e.code === 'TOKEN_EXPIRED') return needLogin(); box.innerHTML = `<div style="color:#e5484d;font-size:13px;">❌ ${U.esc(errMsg(e))}</div>`; }
+          });
+        });
+      });
+    }
+
     U.qs('#ops-err-refresh', root).addEventListener('click', loadErr);
     U.qs('#ops-backup-refresh', root).addEventListener('click', loadBackup);
+    U.qs('#ops-restore-refresh', root).addEventListener('click', loadRestore);
 
     renderAuth();
     loadStatus();
+    loadRestore();
     return root;
   };
 })();

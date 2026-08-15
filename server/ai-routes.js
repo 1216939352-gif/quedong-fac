@@ -572,7 +572,21 @@ function buildInterpretMessages(context) {
   ];
 }
 
-module.exports = function (app /*, db, verifyToken */) {
+module.exports = function (app, db, verifyToken /*, settings */) {
+  // ── 运维级 AI 总开关：被管理员在运维工作台关闭时，所有 AI 端点统一降级 ──
+  // 直接读取 db（请求时查询，避免依赖模块加载时序），settings 表在迁移阶段已确保存在。
+  function aiGloballyDisabled() {
+    try {
+      const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('ai_enabled');
+      const v = row ? row.value : null;
+      return v === 'false' || v === '0';
+    } catch (e) { return false; }
+  }
+  function guardAiDisabled(res) {
+    res.status(503).json({ error: 'ai_disabled', message: 'AI 功能已被管理员在运维工作台全局关闭', mode: ai.cfg.mode });
+    return true;
+  }
+
   /**
    * SSE 端点通用执行器：建流 → meta → 逐字 delta → done/error。
    * 即便中途上游断开，只要已吐出内容就以 done(partial=true) 收尾，
@@ -616,6 +630,7 @@ module.exports = function (app /*, db, verifyToken */) {
     // 实时补一次本地探测
     st.localAvailable = await ai.probeLocal();
     st.available = st.localAvailable || st.cloudConfigured;
+    st.globallyDisabled = aiGloballyDisabled();
     res.json(st);
   });
 
@@ -626,6 +641,7 @@ module.exports = function (app /*, db, verifyToken */) {
 
   // ── 问答 ─────────────────────────────────────────────
   app.post('/api/ai/chat', async (req, res) => {
+    if (aiGloballyDisabled()) return guardAiDisabled(res);
     const b = req.body || {};
     if (!Array.isArray(b.messages) || !b.messages.length) {
       return res.status(400).json({ error: 'messages 不能为空' });
@@ -641,6 +657,7 @@ module.exports = function (app /*, db, verifyToken */) {
 
   // ── 问答（SSE 流式） ─────────────────────────────────
   app.post('/api/ai/chat-stream', async (req, res) => {
+    if (aiGloballyDisabled()) return guardAiDisabled(res);
     const b = req.body || {};
     if (!Array.isArray(b.messages) || !b.messages.length) {
       return res.status(400).json({ error: 'messages 不能为空' });
@@ -650,6 +667,7 @@ module.exports = function (app /*, db, verifyToken */) {
 
   // ── 方案生成 ─────────────────────────────────────────
   app.post('/api/ai/generate-plan', async (req, res) => {
+    if (aiGloballyDisabled()) return guardAiDisabled(res);
     const b = req.body || {};
     const context = b.context || b.assessment || {};
     const module = context.module || 'sarcopenia';
@@ -751,6 +769,7 @@ module.exports = function (app /*, db, verifyToken */) {
   };
 
   app.post('/api/ai/parse-report', async (req, res) => {
+    if (aiGloballyDisabled()) return guardAiDisabled(res);
     const b = req.body || {};
     const layout = b.layout || b.typeHint || 'generic';
     const typeHint = b.typeHint || layout;
@@ -811,6 +830,7 @@ module.exports = function (app /*, db, verifyToken */) {
 
   // ── 报告解读（Markdown，供前端富文本渲染） ──────────
   app.post('/api/ai/interpret', async (req, res) => {
+    if (aiGloballyDisabled()) return guardAiDisabled(res);
     const b = req.body || {};
     const context = b.context || b.assessment || {};
     try {
@@ -824,6 +844,7 @@ module.exports = function (app /*, db, verifyToken */) {
 
   // ── 报告解读（SSE 流式，边生成边渲染） ───────────────
   app.post('/api/ai/interpret-stream', async (req, res) => {
+    if (aiGloballyDisabled()) return guardAiDisabled(res);
     const b = req.body || {};
     const context = b.context || b.assessment || {};
     await runSSE(req, res, buildInterpretMessages(context), { prefer: b.prefer, model: b.model || (ai.hy3Configured() ? ai.cfg.hy3.model : null) });
@@ -831,6 +852,7 @@ module.exports = function (app /*, db, verifyToken */) {
 
   // ── 图像生成（可选能力，未配置时优雅降级） ──────────
   app.post('/api/ai/generate-image', async (req, res) => {
+    if (aiGloballyDisabled()) return guardAiDisabled(res);
     if (!ai.imageGenConfigured()) {
       return res.status(409).json({
         error: 'image_gen_not_configured',

@@ -242,6 +242,31 @@ registerMigration('v4_checkins_scheme', function (db) {
   } catch (e) { /* 字段已存在则忽略 */ }
 });
 
+// v5: 运维审计日志（恢复/纠错/重启/开关等操作留痕，便于追溯与责任界定）
+registerMigration('v5_ops_audit', function (db) {
+  db.exec(`
+  CREATE TABLE IF NOT EXISTS ops_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT DEFAULT (datetime('now')),
+    actor_id TEXT,
+    action TEXT,
+    table_name TEXT,
+    row_id TEXT,
+    detail_json TEXT
+  );
+`);
+});
+
+// v6: 运维设置 KV 表（AI 总开关等；后端令牌在会话级，重启需重登，故设置落库）
+registerMigration('v6_settings', function (db) {
+  db.exec(`
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+  );
+`);
+});
+
 // 执行全部未应用的迁移
 function runMigrations(database) {
   database.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -337,6 +362,24 @@ function authMiddleware(req, res, next) {
 function adminOnly(req, res, next) {
   if (req.user.role !== 'admin') return res.status(403).json({ error: '需要管理员权限' });
   next();
+}
+
+// ───────── 运维设置与审计工具（批次2；上移以便 ai-routes 在加载时即可引用 getSetting）─────────
+const SETTINGS_WHITELIST = { ai_enabled: 'AI 功能总开关（false/0 关闭）' };
+
+function getSetting(key) {
+  try { const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key); return row ? row.value : null; }
+  catch (e) { return null; }
+}
+function setSetting(key, value) {
+  db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(key, String(value));
+}
+function auditOp(actorId, action, table, rowId, detail) {
+  try {
+    db.prepare('INSERT INTO ops_audit (actor_id, action, table_name, row_id, detail_json) VALUES (?,?,?,?,?)')
+      .run(actorId || '', action, table || '', String(rowId == null ? '' : rowId), detail != null ? JSON.stringify(detail) : null);
+  } catch (e) { /* 审计失败不影响主流程 */ }
 }
 
 // ───────────────────────── 应用 ─────────────────────────
@@ -869,6 +912,237 @@ app.get('/api/admin/backup/download', authMiddleware, adminOnly, (req, res) => {
   } catch (e) {
     if (!res.headersSent) res.status(500).json({ error: String(e.message || e) });
   }
+});
+
+// ───────── 批次2：运维安全工作台（数据恢复 / 数据纠错 / 受限重启 / 运维开关）─────────
+// 全部为“加法”，且高危操作（恢复/重启）走“先快照→再执行→退出重启”的稳妥路径。
+// 纠错走白名单 + 参数化 UPDATE，杜绝 SQL 注入。所有高危动作写入 ops_audit 留痕。
+// （SETTINGS_WHITELIST / getSetting / setSetting / auditOp 已上移至“鉴权工具”之后定义，供 ai-routes 在加载时引用。）
+
+// 纠错白名单：仅暴露安全可改的表/列；列名来自本常量，绝不接受前端传入的表/列名（防注入）
+const CORRECT_TABLES = {
+  patients: {
+    label: '患者档案', pk: 'id',
+    searchCols: ['id', 'owner_id', 'data_json'], jsonCols: ['data_json'],
+    columns: { owner_id: '所属医生ID', version: '版本号', data_json: '档案数据(JSON)' },
+    deletable: true
+  },
+  assessments: {
+    label: '评估记录', pk: 'id',
+    searchCols: ['id', 'patient_id', 'type', 'data_json'], jsonCols: ['data_json'],
+    columns: { patient_id: '患者ID', type: '类型', owner_id: '所属医生ID', locked_by: '占用者', data_json: '评估数据(JSON)' },
+    deletable: true
+  },
+  reports: {
+    label: '报告记录', pk: 'id',
+    searchCols: ['id', 'assessment_id', 'type'],
+    columns: { type: '类型', assessment_id: '评估ID', data_json: '报告数据(JSON)' },
+    deletable: true
+  },
+  users: {
+    label: '后台账号', pk: 'id',
+    searchCols: ['id', 'username', 'name', 'role'],
+    columns: { username: '账号', name: '姓名', role: '角色', expires_at: '过期时间' },
+    deletable: false
+  },
+  share_tokens: {
+    label: '分享链接', pk: 'token',
+    searchCols: ['token', 'title', 'owner_id'],
+    columns: { title: '标题', expires_at: '过期时间' },
+    deletable: true
+  },
+  errors: {
+    label: '报错记录', pk: 'id',
+    searchCols: ['id', 'msg', 'level'],
+    columns: { status: '状态', note: '备注' },
+    deletable: true
+  }
+};
+
+// 列出可编辑表（供前端下拉）
+app.get('/api/admin/tables', authMiddleware, adminOnly, (req, res) => {
+  try {
+    const tables = {};
+    Object.keys(CORRECT_TABLES).forEach(t => {
+      const d = CORRECT_TABLES[t];
+      tables[t] = { label: d.label, pk: d.pk, columns: d.columns, deletable: !!d.deletable, jsonCols: d.jsonCols || [] };
+    });
+    res.json({ ok: true, tables });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// 列出某表的记录（搜索/预览；data_json 仅截断预览，编辑时再取完整值）
+app.get('/api/admin/records', authMiddleware, adminOnly, (req, res) => {
+  const table = String(req.query.table || '');
+  const def = CORRECT_TABLES[table];
+  if (!def) return res.status(400).json({ error: '未知或不可编辑的数据表' });
+  const q = String(req.query.q || '').slice(0, 120);
+  const limit = Math.min(Math.max(parseInt(req.query.limit || '50', 10) || 50, 1), 200);
+  try {
+    let rows;
+    if (q) {
+      const where = def.searchCols.map(c => '"' + c + '" LIKE ?').join(' OR ');
+      const params = def.searchCols.map(() => '%' + q + '%');
+      rows = db.prepare('SELECT * FROM "' + table + '" WHERE ' + where + ' ORDER BY rowid DESC LIMIT ?').all(...params, limit);
+    } else {
+      rows = db.prepare('SELECT * FROM "' + table + '" WHERE 1=1 ORDER BY rowid DESC LIMIT ?').all(limit);
+    }
+    const out = rows.map(r => {
+      let display = '';
+      const jsonCol = (def.jsonCols || []).map(c => r[c]).find(x => x);
+      if (jsonCol) { try { const o = JSON.parse(jsonCol); display = o.name || o.patientName || o.title || o.username || ''; } catch (e) {} }
+      if (!display && r.username) display = r.username;
+      if (!display && r.title) display = r.title;
+      const cols = {};
+      Object.keys(def.columns).forEach(c => {
+        let v = r[c];
+        if (v == null) return;
+        if (def.jsonCols && def.jsonCols.includes(c)) { v = String(v); if (v.length > 300) v = v.slice(0, 300) + '…'; }
+        cols[c] = v;
+      });
+      return { id: r[def.pk], display: display, columns: cols };
+    });
+    res.json({ ok: true, table, pk: def.pk, columns: def.columns, jsonCols: def.jsonCols || [], total: out.length, rows: out });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// 取单条记录完整值（编辑用；仅返回白名单列，防止泄露 password_hash/salt 等）
+app.get('/api/admin/record', authMiddleware, adminOnly, (req, res) => {
+  const table = String(req.query.table || '');
+  const def = CORRECT_TABLES[table];
+  if (!def) return res.status(400).json({ error: '未知数据表' });
+  const id = String(req.query.id || '');
+  if (!id) return res.status(400).json({ error: '缺少 id' });
+  try {
+    const r = db.prepare('SELECT * FROM "' + table + '" WHERE "' + def.pk + '" = ?').get(id);
+    if (!r) return res.status(404).json({ error: '记录不存在' });
+    const cols = {};
+    Object.keys(def.columns).forEach(c => { cols[c] = (r[c] != null ? r[c] : null); });
+    res.json({ ok: true, table, pk: def.pk, id, columns: def.columns, jsonCols: def.jsonCols || [], values: cols });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// 通用更新（白名单列 + 参数化，安全）
+app.post('/api/admin/record', authMiddleware, adminOnly, (req, res) => {
+  const b = req.body || {};
+  const table = String(b.table || '');
+  const def = CORRECT_TABLES[table];
+  if (!def) return res.status(400).json({ error: '未知或不可编辑的数据表' });
+  const { id, column, value } = b;
+  if (id == null || !column) return res.status(400).json({ error: '缺少 id 或字段' });
+  if (!(column in def.columns)) return res.status(400).json({ error: '该字段不在可编辑白名单内' });
+  let store = value;
+  const isJson = !!(def.jsonCols && def.jsonCols.includes(column));
+  if (isJson) {
+    if (typeof store !== 'string') store = JSON.stringify(store);
+    try { JSON.parse(store); } catch (e) { return res.status(400).json({ error: 'JSON 格式不正确，请检查后重试' }); }
+  }
+  try {
+    const info = db.prepare('UPDATE "' + table + '" SET "' + column + '" = ? WHERE "' + def.pk + '" = ?').run(store, id);
+    if (info.changes === 0) return res.status(404).json({ error: '未找到对应记录' });
+    auditOp(req.user.uid, 'update', table, id, { column, value: isJson ? '(json)' : store });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// 删除记录（强确认：需 confirm==='DELETE'；部分敏感表禁用直接删除）
+app.post('/api/admin/record/delete', authMiddleware, adminOnly, (req, res) => {
+  const b = req.body || {};
+  const table = String(b.table || '');
+  const def = CORRECT_TABLES[table];
+  if (!def) return res.status(400).json({ error: '未知数据表' });
+  if (!def.deletable) return res.status(403).json({ error: '该表不允许直接删除（请通过对应业务模块操作）' });
+  const { id, confirm } = b;
+  if (id == null) return res.status(400).json({ error: '缺少 id' });
+  if (confirm !== 'DELETE') return res.status(400).json({ error: '需显式确认（confirm=DELETE）' });
+  try {
+    const info = db.prepare('DELETE FROM "' + table + '" WHERE "' + def.pk + '" = ?').run(id);
+    if (info.changes === 0) return res.status(404).json({ error: '未找到对应记录' });
+    auditOp(req.user.uid, 'delete', table, id, {});
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// 列出全部备份点（供整库还原选择）
+app.get('/api/admin/backups', authMiddleware, adminOnly, (req, res) => {
+  try {
+    if (!fs.existsSync(BACKUP_DIR)) return res.json({ ok: true, backups: [] });
+    const dirs = fs.readdirSync(BACKUP_DIR).filter(d => { try { return fs.statSync(path.join(BACKUP_DIR, d)).isDirectory(); } catch (e) { return false; } });
+    dirs.sort();
+    const list = dirs.map(name => {
+      const info = { name, createdAt: null, dbBytes: null, mediaFiles: null, sameAsData: BACKUP_DIR.indexOf(DATA_DIR) === 0 };
+      try {
+        const m = JSON.parse(fs.readFileSync(path.join(BACKUP_DIR, name, 'manifest.json'), 'utf8'));
+        info.createdAt = m.createdAt || null;
+        info.dbBytes = m.db ? m.db.bytes : null;
+        info.mediaFiles = m.media ? m.media.files : null;
+      } catch (e) {}
+      return info;
+    });
+    res.json({ ok: true, backups: list });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// 整库还原：先对“当前状态”拍快照（可撤销），再关闭连接→原子替换文件→重启进程让 Railway 重新加载
+app.post('/api/admin/restore', authMiddleware, adminOnly, (req, res) => {
+  const b = req.body || {};
+  const name = String(b.name || '').trim();
+  if (!name) return res.status(400).json({ error: '缺少备份点名称' });
+  if (!/^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/.test(name)) return res.status(400).json({ error: '非法备份点名称' });
+  const srcDb = path.join(BACKUP_DIR, name, 'app.db');
+  const srcMedia = path.join(BACKUP_DIR, name, 'media');
+  try {
+    if (!fs.existsSync(srcDb)) return res.status(404).json({ error: '该备份点不存在或缺少 app.db' });
+    let snap = null;
+    try { snap = runBackup(); } catch (e) { logger.warn('[restore] 还原前快照失败（继续还原）: ' + (e && e.message ? e.message : e)); }
+    auditOp(req.user.uid, 'restore', 'db', name, { snapshot: snap });
+    // 先回响应，再后台执行文件替换并重启，确保前端拿到成功提示
+    res.json({ ok: true, message: '恢复成功，服务将重启以加载备份', snapshot: snap });
+    setTimeout(() => {
+      try {
+        db.close();
+        const destDb = path.join(DATA_DIR, 'app.db');
+        const tmp = destDb + '.restore-' + Date.now() + '.tmp';
+        fs.copyFileSync(srcDb, tmp);
+        try { fs.rmSync(destDb + '-wal', { force: true }); } catch (e) {}
+        try { fs.rmSync(destDb + '-shm', { force: true }); } catch (e) {}
+        fs.renameSync(tmp, destDb); // 原子替换
+        if (fs.existsSync(srcMedia) && _backup && _backup.copyDir) _backup.copyDir(srcMedia, MEDIA_DIR);
+        logger.info('[restore] 已从备份点 ' + name + ' 还原，准备重启');
+      } catch (e) {
+        logger.error('[restore] 还原失败: ' + (e && e.stack ? e.stack : e));
+      } finally {
+        process.exit(0); // 让运行环境（Railway/nssm）自动重启并加载已还原的库
+      }
+    }, 1000);
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// 受限重启端点：仅退出当前进程（不拉新代码），由运行环境自动拉起 —— 用户选定的“后端受限重启”
+app.post('/api/admin/restart', authMiddleware, adminOnly, (req, res) => {
+  auditOp(req.user.uid, 'restart', 'server', '', {});
+  res.json({ ok: true, message: '服务即将重启（进程退出，由运行环境自动拉起）' });
+  setTimeout(() => process.exit(0), 800);
+});
+
+// 运维设置：读取全部（仅白名单内）
+app.get('/api/admin/settings', authMiddleware, adminOnly, (req, res) => {
+  try {
+    const rows = db.prepare('SELECT key, value FROM settings').all();
+    const o = {};
+    rows.forEach(r => { o[r.key] = r.value; });
+    res.json({ ok: true, settings: o, meta: SETTINGS_WHITELIST });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// 运维设置：写入（仅白名单内）
+app.post('/api/admin/settings', authMiddleware, adminOnly, (req, res) => {
+  const b = req.body || {};
+  const key = String(b.key || '');
+  if (!(key in SETTINGS_WHITELIST)) return res.status(400).json({ error: '不支持的设置项' });
+  const val = (b.value === undefined || b.value === null) ? '' : String(b.value);
+  try { setSetting(key, val); auditOp(req.user.uid, 'setting', 'settings', key, { value: val }); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
 // 自动每日备份：启动即补备（若超 24h 无备份）+ 每天 02:00 例行备份

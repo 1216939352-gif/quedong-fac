@@ -783,7 +783,9 @@ const NAV = [
       { hash: '#/admin', icon: '⚡', label: '系统管理后台', adminOnly: true },
       { hash: '#/accounts', icon: '👑', label: '账号管理', superOnly: true },
       { hash: '#/errlog', icon: '🛡️', label: '系统运维中心', superOnly: true },
-      { hash: '#/ops', icon: '🛠️', label: '运维管理工作台', adminOnly: true }
+      { hash: '#/ops', icon: '🛠️', label: '运维管理工作台', adminOnly: true },
+      { hash: '#/ops-correct', icon: '✏️', label: '数据纠错台', adminOnly: true },
+      { hash: '#/ops-switch', icon: '🎛️', label: '运维开关台', adminOnly: true }
     ]
   },
 ];
@@ -972,6 +974,8 @@ const ROUTES = {
   '#/accounts': { title: '账号管理', render: () => Pages.accounts(), superOnly: true },
   '#/errlog': { title: '系统运维中心', render: () => Pages.errLog(), superOnly: true },
   '#/ops': { title: '运维管理工作台', render: () => Pages.ops(), adminOnly: true },
+  '#/ops-correct': { title: '数据纠错台', render: () => (Pages.opsCorrect ? Pages.opsCorrect() : '<div class="alert alert-warning">数据纠错台模块未加载</div>'), adminOnly: true },
+  '#/ops-switch': { title: '运维开关台', render: () => (Pages.opsSwitch ? Pages.opsSwitch() : '<div class="alert alert-warning">运维开关台模块未加载</div>'), adminOnly: true },
   '#/action-library': { title: '运动方案库管理中心', render: () => Pages.actionLibrary(), adminOnly: true },
   // —— 平行独立核心模块：老年人体重与肌少症管理（独立菜单 / 独立业务数据 / 独立报告 / 独立干预台账）——
   '#/sarcopenia': { title: '肌少症-跌倒风险台账', render: () => Pages.sarcopenia() },
