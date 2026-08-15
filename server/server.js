@@ -1088,6 +1088,7 @@ app.post('/api/admin/restore', authMiddleware, adminOnly, (req, res) => {
   const b = req.body || {};
   const name = String(b.name || '').trim();
   if (!name) return res.status(400).json({ error: '缺少备份点名称' });
+  if (b.confirm !== 'RESTORE') return res.status(400).json({ error: '需要显式二次确认', hint: '请求体需包含 {"confirm":"RESTORE","name":"<备份点名称>"}' });
   if (!/^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/.test(name)) return res.status(400).json({ error: '非法备份点名称' });
   const srcDb = path.join(BACKUP_DIR, name, 'app.db');
   const srcMedia = path.join(BACKUP_DIR, name, 'media');
@@ -1120,6 +1121,8 @@ app.post('/api/admin/restore', authMiddleware, adminOnly, (req, res) => {
 
 // 受限重启端点：仅退出当前进程（不拉新代码），由运行环境自动拉起 —— 用户选定的“后端受限重启”
 app.post('/api/admin/restart', authMiddleware, adminOnly, (req, res) => {
+  const b = req.body || {};
+  if (b.confirm !== 'RESTART') return res.status(400).json({ error: '需要显式二次确认', hint: '请求体需包含 {"confirm":"RESTART"}' });
   auditOp(req.user.uid, 'restart', 'server', '', {});
   res.json({ ok: true, message: '服务即将重启（进程退出，由运行环境自动拉起）' });
   setTimeout(() => process.exit(0), 800);
