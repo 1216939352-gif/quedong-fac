@@ -214,6 +214,17 @@ registerMigration('v3_share_tokens', function (db) {
 `);
 });
 
+// ops: 运维台报修状态列（status / note / resolved_at / updated_at），幂等加列
+registerMigration('ops_err_report_status', function (db) {
+  try {
+    const cols = db.prepare('PRAGMA table_info(errors)').all().map(c => c.name);
+    if (!cols.includes('status')) db.exec("ALTER TABLE errors ADD COLUMN status TEXT DEFAULT 'open'");
+    if (!cols.includes('note')) db.exec('ALTER TABLE errors ADD COLUMN note TEXT');
+    if (!cols.includes('resolved_at')) db.exec('ALTER TABLE errors ADD COLUMN resolved_at TEXT');
+    if (!cols.includes('updated_at')) db.exec("ALTER TABLE errors ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))");
+  } catch (e) { /* 字段已存在则忽略 */ }
+});
+
 // v4: 训练打卡升级——增加 scheme 维度（weight / sarcopenia），使两套台账的执行记录可分维度聚合
 registerMigration('v4_checkins_scheme', function (db) {
   try {
@@ -540,6 +551,32 @@ app.post('/api/err-report', (req, res) => {
 app.get('/api/err-report', authMiddleware, adminOnly, (req, res) => {
   const rows = db.prepare('SELECT * FROM errors ORDER BY id DESC LIMIT 200').all();
   res.json({ count: rows.length, rows });
+});
+
+// 报错状态更新（管理员；报修闭环：标记 待处理/处理中/已解决 + 备注）
+app.patch('/api/admin/err-report/:id', authMiddleware, adminOnly, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ error: '无效记录 id' });
+  const b = req.body || {};
+  const allowed = ['open', 'in_progress', 'resolved'];
+  try {
+    const cur = db.prepare('SELECT id FROM errors WHERE id=?').get(id);
+    if (!cur) return res.status(404).json({ error: '记录不存在' });
+    const sets = []; const vals = [];
+    if (b.status !== undefined) {
+      if (!allowed.includes(b.status)) return res.status(400).json({ error: '非法状态值（应为 open/in_progress/resolved）' });
+      sets.push('status=?'); vals.push(b.status);
+      sets.push('resolved_at=?');
+      vals.push(b.status === 'resolved' ? new Date().toISOString() : null);
+    }
+    if (b.note !== undefined) { sets.push('note=?'); vals.push(String(b.note || '').slice(0, 2000)); }
+    sets.push('updated_at=?'); vals.push(new Date().toISOString());
+    vals.push(id);
+    db.prepare('UPDATE errors SET ' + sets.join(',') + ' WHERE id=?').run(...vals);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: '更新失败' });
+  }
 });
 
 // ───────────── 患者扫码查看报告：服务端短链令牌（方案 B）─────────────
