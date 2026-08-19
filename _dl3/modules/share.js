@@ -43,13 +43,33 @@
     // 训练方案执行打卡（计划 kind）：携带动作清单与 scheme，供患者手机端每日打卡与数据回传
     if (opts.mode === 'plan') {
       const p0 = AppState.patient || {};
-      const scheme = opts.scheme === 'sarcopenia' ? 'sarcopenia' : 'weight';
+      const scheme = opts.scheme === 'sarcopenia' ? 'sarcopenia' : (opts.scheme === 'spine' ? 'spine' : 'weight');
       let exercises = [];
       let patient = { id: p0.id || '', name: p0.name || '', gender: p0.gender || '', age: p0.age || '' };
+      // 显式传入动作清单优先（F 打印纸卡：直接携带，避免依赖模块快照结构、杜绝错误回落）
+      if (Array.isArray(opts.exercises) && opts.exercises.length) {
+        exercises = opts.exercises.map(function (e) { return e; });
+        if (opts.patient && opts.patient.id) patient = {
+          id: opts.patient.id || p0.id || '',
+          name: opts.patient.name || p0.name || '',
+          gender: opts.patient.gender || '',
+          age: opts.patient.age || ''
+        };
+      }
       // 优先使用调用方显式传入的肌少症快照（避免依赖易失全局变量，杜绝回落到体重方案）
       if (scheme === 'sarcopenia' && opts.sarcoRec) {
         const rec = opts.sarcoRec || {};
         exercises = collectSarcExercises(rec);
+        const sp = rec.patient || {};
+        patient = {
+          id: sp.id || rec.pid || rec.id || p0.id || '',
+          name: sp.name || rec.name || p0.name || '',
+          gender: sp.gender || '',
+          age: sp.age || ''
+        };
+      } else if (scheme === 'spine' && opts.spineRec) {
+        const rec = opts.spineRec || {};
+        exercises = collectSpineExercises(rec);
         const sp = rec.patient || {};
         patient = {
           id: sp.id || rec.pid || rec.id || p0.id || '',
@@ -462,6 +482,33 @@
     });
     return out;
   }
+  // 脊柱侧弯方案：从分享快照 rec.actions（SPINE_ACTIONS 字典）抽取动作清单
+  function collectSpineExercises(rec) {
+    const out = [];
+    const actions = rec && rec.actions;
+    if (!actions || typeof actions !== 'object') return out;
+    Object.keys(actions).forEach(function (cat) {
+      const arr = actions[cat];
+      if (!Array.isArray(arr)) return;
+      arr.forEach(function (a) {
+        if (!a) return;
+        // 兼容旧数组结构与新的对象结构
+        const code = a.code || a[0] || '';
+        const name = a.name || a[1] || '';
+        const meta = a.steps || a[2] || '';
+        const desc = a.cautions || a[3] || '';
+        if (!name) return;
+        out.push({
+          id: (code || name), name: name, meta: meta, cat: cat, desc: desc,
+          video: (a.video || ''), image: (a.img || a.image || ''),
+          // 设备处方字段（鹊动设备方案统一携带）
+          device: (a.device || ''), params: (a.params || null), safety: (a.safety || null),
+          dose: (a.dose || ''), types: (a.types || ''), levels: (a.levels || '')
+        });
+      });
+    });
+    return out;
+  }
   // 将本地媒体 Blob（IndexedDB）转为 data-URL；超 maxBytes 返回 null（调用方按"过大"处理）
   function blobToDataURL(blob, maxBytes) {
     return new Promise(function (resolve) {
@@ -557,7 +604,7 @@
     const app = U.qs('#app');
     if (!app) return;
     const pid = (data.pid) || (data.patient && data.patient.id) || 'anon';
-    const scheme = data.scheme === 'sarcopenia' ? 'sarcopenia' : 'weight';
+    const scheme = data.scheme === 'sarcopenia' ? 'sarcopenia' : (data.scheme === 'spine' ? 'spine' : 'weight');
     const exercises = Array.isArray(data.exercises) ? data.exercises.map(function (e) {
       return { id: (e.id || e.name || ''), name: (e.name || ''), meta: (e.meta || ''), cat: (e.cat || ''), desc: (e.desc || ''), media: (e.media || null) };
     }) : [];
@@ -587,6 +634,27 @@
     function pill(k, level, label, cur) {
       return '<button type="button" class="mplan-pill b-' + level + (cur === level ? ' active' : '') + '" data-key="' + U.esc(k) + '" data-level="' + level + '">' + label + '</button>';
     }
+    // 设备处方块（鹊动设备方案：设备名 + 参数 + 安全红线）
+    function deviceBlock(ex) {
+      if (!ex.device) return '';
+      const p = ex.params || null;
+      const rows = [];
+      if (p) {
+        if (p.load) rows.push(['负荷', p.load]);
+        if (p.angleSpeed) rows.push(['角速度', p.angleSpeed]);
+        if (p.resistance) rows.push(['阻力', p.resistance]);
+        if (p.vibFreq) rows.push(['振动频率', p.vibFreq]);
+        if (p.range) rows.push(['行程', p.range]);
+        if (p.reason) rows.push(['匹配依据', p.reason]);
+        if (p.note) rows.push(['要点', p.note]);
+      }
+      const safe = Array.isArray(ex.safety) ? ex.safety : (ex.safety ? [ex.safety] : []);
+      const pr = rows.length ? '<div class="mplan-ex-params">' + rows.map(function (r) {
+        return '<span><i>' + U.esc(r[0]) + '</i>' + U.esc(r[1]) + '</span>';
+      }).join('') + '</div>' : '';
+      const sa = safe.length ? '<div class="mplan-ex-safety">⚠ 安全红线：' + safe.map(U.esc).join('；') + '</div>' : '';
+      return '<div class="mplan-ex-device">🤖 鹊动设备 · ' + U.esc(ex.device) + '</div>' + pr + sa;
+    }
     function renderExList() {
       if (!exercises.length) return '<div class="mplan-empty">医生尚未为您配置训练动作，请稍后与主治医师确认方案。</div>';
       const catLabel = { resistance: '抗阻', balance: '平衡', flexibility: '柔韧', device: '器械', warmup: '热身', main: '主练', aerobic: '有氧', stretch: '拉伸', general: '' };
@@ -611,15 +679,22 @@
         h += '</div>';
         return h;
       })();
-      return '<div class="mplan-ex" data-key="' + U.esc(k) + '">' +
+      return '<div class="mplan-ex' + (ex.device ? ' mplan-ex-device-kind' : '') + '" id="a-' + U.esc(k) + '" data-key="' + U.esc(k) + '">' +
           '<div class="mplan-ex-head"><div class="mplan-ex-name">' + U.esc(ex.name) + '</div>' +
-          (catLabel[ex.cat] ? '<span class="mplan-ex-cat">' + U.esc(catLabel[ex.cat]) + '</span>' : '') + '</div>' +
+          (catLabel[ex.cat] ? '<span class="mplan-ex-cat">' + U.esc(catLabel[ex.cat]) + '</span>' : (ex.cat ? '<span class="mplan-ex-cat">' + U.esc(ex.cat) + '</span>' : '')) + '</div>' +
           (ex.meta ? '<div class="mplan-ex-meta">' + U.esc(ex.meta) + '</div>' : '') +
+          (ex.device ? deviceBlock(ex) : '') +
           mediaHtml +
           (ex.desc ? '<div class="mplan-ex-desc" style="font-size:12.5px;color:#475569;margin-top:6px;line-height:1.6;">' + U.esc(ex.desc) + '</div>' : '') +
           '<div class="mplan-pills">' + pill(k, 'easy', '轻松完成', lv) + pill(k, 'normal', '一般完成', lv) + pill(k, 'hard', '费力完成', lv) + pill(k, 'none', '未完成', lv) + '</div>' +
           reasonsTip + '</div>';
       }).join('');
+    }
+    function updateProgress() {
+      const done = exercises.filter(function (ex) { const k = ex.id || ex.name; return state[k] && state[k].level; }).length;
+      const bar = U.qs('#mplan-prog', app); const txt = U.qs('#mplan-prog-txt', app);
+      if (bar) bar.style.width = Math.round(done / Math.max(1, exercises.length) * 100) + '%';
+      if (txt) txt.textContent = '完成进度 ' + done + '/' + exercises.length;
     }
     function kpiCard(label, val, unit) {
       return '<div class="mplan-kpi-card"><div class="mplan-kpi-val">' + val + '<span class="mplan-kpi-unit">' + unit + '</span></div><div class="mplan-kpi-label">' + label + '</div></div>';
@@ -647,7 +722,7 @@
         '</div>' +
         '<div class="mplan-body" id="mplan-body">' +
           '<div class="mplan-patient"><div class="mplan-patient-name">' + U.esc(pname) + '</div>' +
-          '<div class="mplan-patient-tag">' + (scheme === 'sarcopenia' ? '肌少症 · 居家训练' : '体重管理 · 训练方案') + '</div></div>' +
+          '<div class="mplan-patient-tag">' + (scheme === 'sarcopenia' ? '肌少症 · 居家训练' : (scheme === 'spine' ? '青少年脊柱 · 居家训练' : '体重管理 · 训练方案')) + '</div></div>' +
           renderKpi() + renderTrend() +
           '<div class="mplan-done-banner no-print" id="mplan-done" style="display:none;">' +
             '<div class="mplan-done-icon">✅</div>' +
@@ -657,6 +732,7 @@
           '</div>' +
           '<div class="mplan-fill" id="mplan-fill">' +
           '<div class="mplan-section-title">今日训练（' + today + '）</div>' +
+          '<div class="mplan-progress no-print"><div class="mplan-progress-track"><div class="mplan-progress-bar" id="mplan-prog" style="width:0%"></div></div><span id="mplan-prog-txt">完成进度 0/' + exercises.length + '</span></div>' +
           '<div class="mplan-ex-list" id="mplan-ex-list">' + renderExList() + '</div>' +
           '<div class="mplan-foot no-print">请为每项动作选择完成度；选择「费力完成 / 未完成」可补充原因，便于医生为您调整方案。</div>' +
           '</div>' +
@@ -686,6 +762,12 @@
     const list = U.qs('#mplan-ex-list', app);
     const redoBtn = U.qs('#mplan-redo', app);
     if (redoBtn) redoBtn.onclick = showFill;
+    updateProgress();
+    try {
+      const h = location.hash || '';
+      const m = h.match(/a=([^&]+)/);
+      if (m) { const el = U.qs('#a-' + decodeURIComponent(m[1]), app); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    } catch (e) {}
     function renderReasonsTip(exEl, k) {
       const lv = state[k].level;
       let tipEl = exEl.querySelector('.mplan-reasons-tip');
@@ -704,6 +786,7 @@
       if (lv === 'hard' || lv === 'none') {
         openCheckinReasonsModal(k, lv, state[k].reasons.slice(), function (reasons) { state[k].reasons = reasons; renderReasonsTip(exEl, k); });
       } else { state[k].reasons = []; renderReasonsTip(exEl, k); }
+      updateProgress();
     });
 
     U.qs('#mplan-submit', app).onclick = async function () {
@@ -844,7 +927,7 @@
     const url = usingShort ? created.url : (isAi
       ? buildShareURL({ mode: 'ai' })
       : isPlan
-      ? buildShareURL({ mode: 'plan', scheme: opts.scheme, title: opts.title, sarcoRec: opts.sarcoRec })
+      ? buildShareURL({ mode: 'plan', scheme: opts.scheme, title: opts.title, sarcoRec: opts.sarcoRec, spineRec: opts.spineRec })
       : buildShareURL({ scope: qScope, sarcoRec: opts.sarcoRec }));
     let qrImg = '';
     let qrErr = '';
@@ -942,7 +1025,7 @@
     } catch (e) { url = ''; }
     if (!url) {
       try {
-        if (isPlan) url = buildShareURL({ mode: 'plan', scheme: opts.scheme, title: opts.title, sarcoRec: opts.sarcoRec });
+        if (isPlan) url = buildShareURL({ mode: 'plan', scheme: opts.scheme, title: opts.title, sarcoRec: opts.sarcoRec, spineRec: opts.spineRec });
         else if (isAi) url = buildShareURL({ mode: 'ai' });
         else url = buildShareURL({ scope: bScope, sarcoRec: opts.sarcoRec });
       } catch (e) { url = ''; }

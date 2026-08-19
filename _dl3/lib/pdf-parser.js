@@ -378,6 +378,7 @@
     if (text.includes('等速') || text.includes('F-Max') || text.includes('峰值力矩') || text.includes('向心') || text.includes('离心')) return 'isokinetic';
     if (text.includes('等张') || text.includes('XRM') || text.includes('1RM') || text.includes('重复次数')) return 'isotonic';
     if (text.includes('等长') || text.includes('最大等长') || text.includes('MVC')) return 'isometric';
+    if (text.includes('足底') || text.includes('足压') || text.includes('plantar') || text.includes('压力分布') || text.includes('重心') || text.includes('足弓') || text.includes('步态分析') || text.includes('步幅')) return 'plantar';
     return 'unknown';
   }
 
@@ -471,6 +472,40 @@
   async function pageToLines(page) {
     const content = await page.getTextContent();
     return itemsToLineStrings(content && content.items);
+  }
+
+  /* 足底压力 / 步态分析报告解析：抽取步幅不对称、压力比、重心偏移、足弓/足型、异常描述。
+   * 兼容数字文本型与 OCR 扫描件（parseFile 已内置 OCR 兜底，lines 为按行文本）。 */
+  function parsePlantar(lines) {
+    const text = lines.join('\n');
+    const f = {};
+    const num = (v) => { const n = U.num(v); return (n != null && !isNaN(n)) ? n : null; };
+    const m1 = (re) => { const m = text.match(re); return m ? m[1] : null; };
+    // 步幅不对称差值 (cm)
+    let s = m1(/步幅[^\n]{0,14}?不对称[^\d]{0,8}?(\-?\d+(?:\.\d+)?)/i)
+          || m1(/步态[^\n]{0,14}?不对称[^\d]{0,8}?(\-?\d+(?:\.\d+)?)/i)
+          || m1(/步幅差[^\d]{0,8}?(\-?\d+(?:\.\d+)?)/i)
+          || m1(/不对称[^\n]{0,14}?步幅[^\d]{0,8}?(\-?\d+(?:\.\d+)?)/i);
+    if (s) f.stepAsym = num(s);
+    // 左右足底压力比值
+    let pr = m1(/压力比[^\d]{0,8}?(\-?\d+(?:\.\d+)?)/i)
+           || m1(/左右[^\n]{0,16}?比值[^\d]{0,8}?(\-?\d+(?:\.\d+)?)/i);
+    if (pr) f.pressureRatio = num(pr);
+    // 静态重心 X / Y 轴偏移 (mm)
+    let cx = m1(/重心[^\n]{0,16}?X[^\d]{0,6}?(\-?\d+(?:\.\d+)?)/i);
+    if (cx) f.cogX = num(cx);
+    let cy = m1(/重心[^\n]{0,16}?Y[^\d]{0,6}?(\-?\d+(?:\.\d+)?)/i);
+    if (cy) f.cogY = num(cy);
+    // 足弓代偿 / 足型（中文字面值）
+    let arch = m1(/足弓[：:]\s*([一-鿿]{2,4})/)
+             || m1(/(正常足|扁平足|高弓足|正常|扁平|高弓)/);
+    if (arch) { f.archType = /足$/.test(arch) ? arch : arch + '足'; }
+    let foot = m1(/足型(?:判断)?[：:\s]*([一-鿿]{2,4})/);
+    if (foot) f.footType = foot;
+    // 足底异常文本描述（取含「足底/足压/步态」且较长的描述句）
+    const descLine = lines.find(l => /足底[^\n]{0,6}?描述[^\n]{4,}|足压异常[^\n]{4,}|步态异常[^\n]{4,}|足底压力[^\n]{0,4}(异常|结论|建议|集中|偏高|偏低)[^\n]{2,}/.test(l));
+    if (descLine) f.plantarDesc = descLine.trim().slice(0, 200);
+    return f;
   }
 
   async function parseFile(file, opts) {
@@ -573,6 +608,18 @@
         rm1Bw: numbers.rm1Bw || null
       });
       result.confidence = result.fields.rm1 ? 'high' : 'low';
+    } else if (type === 'plantar') {
+      const pl = parsePlantar(lines);
+      Object.assign(result.fields, {
+        stepAsym: pl.stepAsym != null ? pl.stepAsym : null,
+        pressureRatio: pl.pressureRatio != null ? pl.pressureRatio : null,
+        archType: pl.archType || null,
+        cogX: pl.cogX != null ? pl.cogX : null,
+        cogY: pl.cogY != null ? pl.cogY : null,
+        footType: pl.footType || null,
+        plantarDesc: pl.plantarDesc || null
+      });
+      result.confidence = (pl.pressureRatio != null && pl.archType) ? 'high' : 'low';
     }
 
     return result;
@@ -581,6 +628,7 @@
   window.PdfParser = {
     parseFile,
     detectReportType,
+    parsePlantar,
     loadPdfJs,
     parseNumbers,
     parseNarrative,

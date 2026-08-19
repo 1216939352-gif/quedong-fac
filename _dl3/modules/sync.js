@@ -92,7 +92,7 @@
     if (was !== nv) emit();
   }
 
-  // ───────── 离线横幅（仅在工作区存在时显示） ─────────
+  // ───────── 离线提示（左下角小弹窗 toast，不遮挡主内容） ─────────
   function ensureOfflineBanner() {
     let b = document.getElementById('offline-banner');
     if (b) return b;
@@ -100,7 +100,7 @@
     b.id = 'offline-banner';
     b.className = 'no-print offline-banner';
     b.innerHTML = '<span class="offline-ico">📡</span><span class="offline-msg"></span>' +
-      '<button type="button" class="offline-retry">重试</button>' +
+      '<button type="button" class="offline-retry" title="立即重试">↻</button>' +
       '<button type="button" class="offline-close" aria-label="关闭">×</button>';
     b.querySelector('.offline-retry').addEventListener('click', function () { tick(); });
     b.querySelector('.offline-close').addEventListener('click', function () { b.remove(); });
@@ -108,12 +108,12 @@
   }
   function updateOfflineBanner() {
     if (online) { const e = document.getElementById('offline-banner'); if (e) e.remove(); return; }
-    const host = document.querySelector('.main-area') || document.body;
+    const host = document.body;
     const b = ensureOfflineBanner();
-    if (b.parentNode !== host) host.insertBefore(b, host.firstChild);
+    if (b.parentNode !== host) host.appendChild(b);
     const reasonText = offlineReason === 'maintenance' ? '服务器维护中' : '网络不可用';
     b.querySelector('.offline-msg').textContent =
-      '您当前离线（' + reasonText + '），数据已保存在本地，恢复网络后将自动同步';
+      '离线（' + reasonText + '），数据已保存本地';
   }
 
   // ───────── 本地读写 ─────────

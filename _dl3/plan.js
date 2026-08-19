@@ -232,7 +232,6 @@
           </div>
           <button class="btn btn-secondary" id="btn-regen">🔄 基于最新数据重新生成</button>
           <button class="btn btn-primary" id="btn-save-plan">保存方案</button>
-          <a href="#/report" class="btn btn-success">生成完整报告 →</a>
         </div>
       </div>
       <div id="plan-body">${renderPlanHTML(plan)}</div>
@@ -256,6 +255,176 @@
     };
     bindEdit(U.qs('#plan-body', wrap));
     bindPatientBar(wrap);
+    return wrap;
+  };
+
+  /* ============ 肌少症综合干预方案（复用共享方案引擎的运动处方数据） ============ */
+  // 蛋白质导向营养卡（替换体重热量缺口框架）
+  /* 肌少症智能方案：改由 SarcDB 最新肌少症评估记录（result.plan）经 PlanView 渲染，
+     与体重管理方案彻底解耦。旧 sarcProteinCardHTML / paintSarPlanBody（复用体重 renderPlanHTML）已移除。 */
+
+  /* 肌少症智能方案页（#/sarcopenia-plan）
+   * 关键修复：不再调用体重管理的 buildPlan()/renderPlanHTML()，避免产出体重方案。
+   * 改为从 SarcDB 读取最新「肌少症综合评估」记录（result.plan），用统一渲染器 PlanView 渲染其真实方案：
+   *   徒手分组动作（热身/主体/平衡/有氧/拉伸，来自 36 动作库智能匹配）+ 鹊动设备训练（设备库真实图片）。
+   * 与脊杆方案页（Pages.spinePlan）保持同一渲染管线，确保两单元排版 / 设备图片一致。 */
+  Pages.sarcopeniaPlan = async function () {
+    const SarcDB = window.SarcDB;
+    if (!SarcDB) {
+      return U.el(`<div class="alert alert-warning"><div><strong>肌少症评估数据库未就绪</strong>
+        <p style="margin:6px 0 0;">请刷新页面后重试，或先完成「肌少症-跌倒风险评估」。</p>
+        <a href="#/sarcopenia-assess" class="btn btn-primary btn-sm mt-2">前往肌少症评估 →</a></div></div>`);
+    }
+    const rec = (SarcDB.list() || [])
+      .filter(function (r) { return r && r.result && r.result.plan && r.result.plan.home && r.module !== 'spine'; })
+      .sort(function (a, b) { return new Date(b.assessDate || 0) - new Date(a.assessDate || 0); })[0];
+
+    if (!rec || !rec.result || !rec.result.plan) {
+      return U.el(`<div class="alert alert-warning"><div><strong>尚未找到肌少症综合评估方案</strong>
+        <p style="margin:6px 0 0;">请先完成一次「肌少症-跌倒风险评估」（10 步流程，步骤 8 将生成推荐方案并归档）。本页只展示该评估产出的真实方案，不会复用体重管理或其他模块方案。</p>
+        <a href="#/sarcopenia-assess" class="btn btn-primary btn-sm mt-2">前往肌少症评估 →</a></div></div>`);
+    }
+
+    const R = rec.result;
+    const plan = R.plan;
+    const base = rec.base || {};
+    const input = rec.input || {};
+
+    /* 评估依据溯源条（D 医护端顶部） */
+    const trace = [
+      { label: '小腿围', value: (input.calf != null ? U.num(input.calf) + ' cm' : '—') },
+      { label: '握力', value: (input.grip != null ? U.num(input.grip) + ' kg' : '—') },
+      { label: '4m 步速', value: (input.gait != null ? U.num(input.gait) + ' m/s' : '—') },
+      { label: '建议复查', value: (plan.reviewDate || '—') }
+    ];
+
+    /* 动作 sections：徒手分组（来自 36 动作库匹配）+ 鹊动设备 */
+    const sections = [];
+    const ep = plan.home && plan.home.exercisePlan;
+    if (ep) {
+      const GLABEL = { warmup: '热身', main: '主体训练', balance: '平衡训练', aerobic: '有氧训练', stretch: '拉伸放松' };
+      ['warmup', 'main', 'balance', 'aerobic', 'stretch'].forEach(function (g) {
+        const grp = ep[g];
+        if (!grp || !grp.items || !grp.items.length) return;
+        sections.push({
+          cat: GLABEL[g],
+          items: grp.items.map(function (it) {
+            const st = it.status === 'recommend' ? '推荐' : it.status === 'forbidden' ? '禁止' : it.status === 'optional' ? '可选' : '';
+            return {
+              name: it.name || '动作',
+              levels: it.level || '',
+              types: st,
+              dose: it.params || '',
+              steps: it.note || '按要点规范完成，循序渐进',
+              cautions: '',
+              safety: [],
+              device: '',
+              img: '',
+              video: ''
+            };
+          })
+        });
+      });
+    } else if (plan.home && plan.home.actions && plan.home.actions.length) {
+      sections.push({
+        cat: '居家徒手训练',
+        items: plan.home.actions.map(function (a) {
+          return {
+            name: (Array.isArray(a) ? a[0] : a), levels: '', types: '', dose: '',
+            steps: (plan.home.rules || []).join('；'), cautions: '', safety: [], device: '', img: '', video: ''
+          };
+        })
+      });
+    }
+
+    if (plan.device && plan.device.devices && plan.device.devices.length) {
+      const all = (window.CONST && CONST.DEVICES) ? CONST.DEVICES : [];
+      sections.push({
+        cat: '鹊动设备训练',
+        items: plan.device.devices.map(function (dv) {
+          const d = all.filter(function (x) { return x.id === dv.id; })[0] || {};
+          const name = dv.name || d.name || ('QD-' + dv.id);
+          const code = d.code || ('QD-' + dv.id);
+          return {
+            code: code,
+            name: name,
+            device: (code + (d.name ? ' · ' + d.name : '')),
+            img: d.img || dv.img || '',
+            dose: dv.dose || '',
+            params: { reason: dv.reason || '', note: dv.keyPoints || '' },
+            steps: dv.keyPoints || '',
+            cautions: dv.contraindication || '',
+            safety: dv.contraindication ? [dv.contraindication] : [],
+            video: ''
+          };
+        })
+      });
+    }
+
+    const stat = (function () {
+      let count = 0, video = 0, dev = 0;
+      sections.forEach(function (s) { s.items.forEach(function (it) { count++; if (it.video) video++; if (it.device) dev++; }); });
+      return { count: count, cats: sections.length, duration: (count * 3) + ' 分钟（估算）', video: video, cycle: (plan.reviewDays ? plan.reviewDays + ' 天复查' : '—') };
+    })();
+
+    const isMobile = (window.innerWidth <= 760);
+    const planBody = isMobile
+      ? PlanView.renderE('sarcopenia', sections, {
+        patientName: rec.patientName || base.name || '',
+        safety: '动作中出现疼痛、头晕或明显气促请立即停止；平衡训练需有人陪同，康复师可远程跟进。'
+      })
+      : PlanView.renderD('sarcopenia', sections, { trace: trace, stat: stat });
+
+    /* 顶部方案简介卡（对象 / 首选 / 方向 / 复查） */
+    const preferLabel = plan.prefer && plan.prefer.prefer === 'home'
+      ? '老年徒手训练方案（居家零设备）'
+      : (plan.prefer && plan.prefer.prefer === 'device' ? '鹊动设备训练方案（机构量化）' : '—');
+    const summary = `
+      <div class="card mb-3" style="--ac:#0D9488">
+        <div class="card-body sarc-head">
+          <div><span class="sarc-head-l">方案对象</span><div class="sarc-head-v">${U.esc(rec.patientName || base.name || '—')}</div></div>
+          <div><span class="sarc-head-l">系统首选</span><div class="sarc-head-v">${U.esc(preferLabel)}</div></div>
+          <div><span class="sarc-head-l">匹配方向</span><div class="sarc-head-v">${U.esc(plan.direction || '—')}</div></div>
+          <div><span class="sarc-head-l">建议复查</span><div class="sarc-head-v">${U.esc(plan.reviewDate || '—')}</div></div>
+          <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
+            <a class="btn btn-secondary btn-sm" href="#/sarcopenia">返回肌少症台账</a>
+            <a class="btn btn-success btn-sm" href="#/report-center">查看报告管理中心 →</a>
+          </div>
+        </div>
+      </div>`;
+
+    /* 膳食 / 有氧 / 原则 概要卡 */
+    const dietCard = (plan.diet && plan.diet.length) ? `
+      <div class="card mb-3"><div class="card-header"><h3 class="card-title"><span class="card-title-icon">🥗</span>膳食蛋白要点</h3></div>
+        <div class="card-body">${plan.diet.map(function (x) { return '<div style="font-size:13.5px;line-height:1.7;">· ' + U.esc(Array.isArray(x) ? (x[1] || x[0]) : x) + '</div>'; }).join('')}</div></div>` : '';
+    const aerobicCard = plan.aerobic ? `
+      <div class="card mb-3"><div class="card-header"><h3 class="card-title"><span class="card-title-icon">🚶</span>有氧安排</h3></div>
+        <div class="card-body" style="font-size:13.5px;line-height:1.7;">${U.esc(plan.aerobic)}</div></div>` : '';
+    const prinCard = (plan.principles && plan.principles.length) ? `
+      <div class="card mb-3"><div class="card-header"><h3 class="card-title"><span class="card-title-icon">💡</span>适配原则</h3></div>
+        <div class="card-body">${plan.principles.map(function (x) { return '<div style="font-size:13.5px;line-height:1.7;">· ' + U.esc(Array.isArray(x) ? (x[1] || x[0]) : x) + '</div>'; }).join('')}</div></div>` : '';
+
+    const wrap = U.el(`<div style="--ac:#0D9488">
+      ${summary}
+      ${dietCard}${aerobicCard}${prinCard}
+      <div id="sar-plan-body">${planBody}</div>
+      <div class="card mb-3 no-print"><div class="card-body" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+        <div style="flex:1;min-width:200px;font-size:13px;color:var(--text-muted);">本方案由肌少症综合评估（10 步流程）自动产出，已归档于肌少症独立台账，与体重管理方案相互独立。</div>
+        <button class="btn btn-secondary" id="btn-save-sar">💾 保存方案至档案</button>
+      </div></div>
+    </div>`);
+
+    PlanView.bindPlay(U.qs('#sar-plan-body', wrap));
+
+    U.qs('#btn-save-sar', wrap).onclick = async function () {
+      AppState.trainingPlanHistory = AppState.trainingPlanHistory || [];
+      AppState.trainingPlanHistory.push({
+        savedAt: new Date().toISOString(),
+        summary: { module: 'sarcopenia', no: rec.no, patientName: rec.patientName, reviewDays: plan.reviewDays }
+      });
+      await (typeof persistPatient === 'function' ? persistPatient() : Promise.resolve());
+      U.toast('肌少症干预方案已保存至患者档案', 'success');
+    };
     return wrap;
   };
 

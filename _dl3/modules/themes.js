@@ -148,6 +148,58 @@
         '--skin-bg-a':'#050a1c','--skin-bg-b':'#0a1430','--skin-c1':'#2563EB','--skin-c2':'#FACC15','--skin-c3':'#EF4444','--skin-c4':'#38BDF8','--skin-c5':'#FBBF24',
         '--primary-bg':'rgba(37,99,235,.15)','--sidebar-active-bg':'rgba(37,99,235,.17)','--sidebar-active-text':'#93C5FD',
         '--bigdata-value-grad':'linear-gradient(180deg,#fff,#2563EB)','--shadow-glow':'0 0 0 4px rgba(37,99,235,.20)' }
+    ),
+    /* ⑥ 青碧（Teal）—— 清透医疗青绿，专业且柔和 */
+    build('teal', '青碧',
+      { '--primary':'#0D9488','--primary-dark':'#0F766E','--primary-light':'#2DD4BF','--accent':'#0891B2','--skin-primary':'#0D9488',
+        '--skin-glow':'rgba(13,148,136,.40)','--skin-orb-1':'rgba(13,148,136,.20)','--skin-orb-2':'rgba(8,145,178,.16)',
+        '--skin-bg-a':'#E6F4F1','--skin-bg-b':'#F4FAF9','--skin-c1':'#0D9488','--skin-c2':'#0891B2','--skin-c3':'#64748B','--skin-c4':'#F59E0B','--skin-c5':'#EF4444',
+        '--primary-bg':'rgba(13,148,136,.12)','--sidebar-active-bg':'rgba(13,148,136,.13)','--sidebar-active-text':'#0F766E',
+        '--bigdata-value-grad':'linear-gradient(180deg,#fff,#0D9488)','--shadow-glow':'0 0 0 4px rgba(13,148,136,.16)' },
+      { '--primary':'#2DD4BF','--primary-dark':'#0D9488','--primary-light':'#5EEAD4','--accent':'#38BDF8','--skin-primary':'#2DD4BF',
+        '--skin-glow':'rgba(13,148,136,.42)','--skin-orb-1':'rgba(13,148,136,.26)','--skin-orb-2':'rgba(8,145,178,.20)',
+        '--skin-bg-a':'#04181a','--skin-bg-b':'#07232a','--skin-c1':'#0D9488','--skin-c2':'#0891B2','--skin-c3':'#64748B','--skin-c4':'#F59E0B','--skin-c5':'#EF4444',
+        '--primary-bg':'rgba(13,148,136,.16)','--sidebar-active-bg':'rgba(13,148,136,.18)','--sidebar-active-text':'#5EEAD4',
+        '--bigdata-value-grad':'linear-gradient(180deg,#fff,#0D9488)','--shadow-glow':'0 0 0 4px rgba(13,148,136,.20)' }
+    ),
+    /* ⑦ 靛蓝（Indigo）—— 沉稳科技蓝紫，B 端专业感 */
+    build('indigo', '靛蓝',
+      { '--primary':'#4F46E5','--primary-dark':'#4338CA','--primary-light':'#818CF8','--accent':'#0EA5E9','--skin-primary':'#4F46E5',
+        '--skin-glow':'rgba(79,70,229,.38)','--skin-orb-1':'rgba(79,70,229,.20)','--skin-orb-2':'rgba(14,165,233,.16)',
+        '--skin-bg-a':'#ECEEFB','--skin-bg-b':'#F5F6FD','--skin-c1':'#4F46E5','--skin-c2':'#0EA5E9','--skin-c3':'#64748B','--skin-c4':'#F59E0B','--skin-c5':'#EF4444',
+        '--primary-bg':'rgba(79,70,229,.12)','--sidebar-active-bg':'rgba(79,70,229,.13)','--sidebar-active-text':'#4338CA',
+        '--bigdata-value-grad':'linear-gradient(180deg,#fff,#4F46E5)','--shadow-glow':'0 0 0 4px rgba(79,70,229,.16)' },
+      { '--primary':'#818CF8','--primary-dark':'#4F46E5','--primary-light':'#A5B4FC','--accent':'#38BDF8','--skin-primary':'#818CF8',
+        '--skin-glow':'rgba(79,70,229,.42)','--skin-orb-1':'rgba(79,70,229,.26)','--skin-orb-2':'rgba(14,165,233,.20)',
+        '--skin-bg-a':'#0c0e22','--skin-bg-b':'#141633','--skin-c1':'#4F46E5','--skin-c2':'#0EA5E9','--skin-c3':'#64748B','--skin-c4':'#F59E0B','--skin-c5':'#EF4444',
+        '--primary-bg':'rgba(79,70,229,.16)','--sidebar-active-bg':'rgba(79,70,229,.18)','--sidebar-active-text':'#A5B4FC',
+        '--bigdata-value-grad':'linear-gradient(180deg,#fff,#4F46E5)','--shadow-glow':'0 0 0 4px rgba(79,70,229,.20)' }
+    ),
+    /* ⑧ 竹绿（Emerald）—— 自然健康绿，活力亲和 */
+    build('emerald', '竹绿',
+      { '--primary':'#059669','--primary-dark':'#047857','--primary-light':'#34D399','--accent':'#84CC16','--skin-primary':'#059669',
+        '--skin-glow':'rgba(5,150,105,.36)','--skin-orb-1':'rgba(5,150,105,.20)','--skin-orb-2':'rgba(132,204,22,.14)',
+        '--skin-bg-a':'#E7F6EE','--skin-bg-b':'#F3FBF7','--skin-c1':'#059669','--skin-c2':'#84CC16','--skin-c3':'#64748B','--skin-c4':'#F59E0B','--skin-c5':'#EF4444',
+        '--primary-bg':'rgba(5,150,105,.12)','--sidebar-active-bg':'rgba(5,150,105,.13)','--sidebar-active-text':'#047857',
+        '--bigdata-value-grad':'linear-gradient(180deg,#fff,#059669)','--shadow-glow':'0 0 0 4px rgba(5,150,105,.16)' },
+      { '--primary':'#34D399','--primary-dark':'#059669','--primary-light':'#6EE7B7','--accent':'#A3E635','--skin-primary':'#34D399',
+        '--skin-glow':'rgba(5,150,105,.42)','--skin-orb-1':'rgba(5,150,105,.26)','--skin-orb-2':'rgba(132,204,22,.18)',
+        '--skin-bg-a':'#04140e','--skin-bg-b':'#07241a','--skin-c1':'#059669','--skin-c2':'#84CC16','--skin-c3':'#64748B','--skin-c4':'#F59E0B','--skin-c5':'#EF4444',
+        '--primary-bg':'rgba(5,150,105,.16)','--sidebar-active-bg':'rgba(5,150,105,.18)','--sidebar-active-text':'#6EE7B7',
+        '--bigdata-value-grad':'linear-gradient(180deg,#fff,#059669)','--shadow-glow':'0 0 0 4px rgba(5,150,105,.20)' }
+    ),
+    /* ⑨ 烟紫（Mauve）—— 雅致紫调，柔美不失专业 */
+    build('mauve', '烟紫',
+      { '--primary':'#8B5CF6','--primary-dark':'#7C3AED','--primary-light':'#A78BFA','--accent':'#C084FC','--skin-primary':'#8B5CF6',
+        '--skin-glow':'rgba(139,92,246,.38)','--skin-orb-1':'rgba(139,92,246,.20)','--skin-orb-2':'rgba(192,132,252,.16)',
+        '--skin-bg-a':'#F1ECFB','--skin-bg-b':'#F8F5FD','--skin-c1':'#8B5CF6','--skin-c2':'#C084FC','--skin-c3':'#64748B','--skin-c4':'#F59E0B','--skin-c5':'#EF4444',
+        '--primary-bg':'rgba(139,92,246,.12)','--sidebar-active-bg':'rgba(139,92,246,.13)','--sidebar-active-text':'#7C3AED',
+        '--bigdata-value-grad':'linear-gradient(180deg,#fff,#8B5CF6)','--shadow-glow':'0 0 0 4px rgba(139,92,246,.16)' },
+      { '--primary':'#A78BFA','--primary-dark':'#8B5CF6','--primary-light':'#C4B5FD','--accent':'#E9D5FF','--skin-primary':'#A78BFA',
+        '--skin-glow':'rgba(139,92,246,.42)','--skin-orb-1':'rgba(139,92,246,.26)','--skin-orb-2':'rgba(192,132,252,.20)',
+        '--skin-bg-a':'#120c22','--skin-bg-b':'#1c1433','--skin-c1':'#8B5CF6','--skin-c2':'#C084FC','--skin-c3':'#64748B','--skin-c4':'#F59E0B','--skin-c5':'#EF4444',
+        '--primary-bg':'rgba(139,92,246,.16)','--sidebar-active-bg':'rgba(139,92,246,.18)','--sidebar-active-text':'#C4B5FD',
+        '--bigdata-value-grad':'linear-gradient(180deg,#fff,#8B5CF6)','--shadow-glow':'0 0 0 4px rgba(139,92,246,.20)' }
     )
   ];
 
@@ -170,7 +222,23 @@
   var LEGACY_TEX = { liquid: 'glass', frost: 'glass', mesh: 'glass', grid: 'neon', solid: 'paper' };
   var LEGACY_CLASSES = ['tex-liquid', 'tex-frost', 'tex-grid', 'tex-mesh', 'tex-solid'];
 
-  var DEFAULT = { scheme: 'orange', texture: 'glass', mode: 'light' };
+  // ============ 动效（4版，CSS变量驱动） ============
+  var MOTIONS = [
+    { id: 'A', name: '克制实用', vars: { '--m-page-dur':'180ms','--m-page-ease':'cubic-bezier(.4,0,.2,1)','--m-page-exit':'translateY(6px)','--m-page-blur-out':'0px','--m-btn-dur':'140ms','--m-btn-ease':'cubic-bezier(.4,0,.2,1)','--m-btn-hover-scale':'1.02','--m-btn-press-scale':'0.98','--m-card-dur':'220ms','--m-card-ease':'cubic-bezier(.4,0,.2,1)','--m-card-lift':'4px','--m-chip-dur':'220ms' } },
+    { id: 'B', name: '弹性活力', vars: { '--m-page-dur':'280ms','--m-page-ease':'cubic-bezier(.34,1.56,.64,1)','--m-page-exit':'scale(.97)','--m-page-blur-out':'0px','--m-btn-dur':'200ms','--m-btn-ease':'cubic-bezier(.34,1.56,.64,1)','--m-btn-hover-scale':'1.05','--m-btn-press-scale':'0.93','--m-card-dur':'320ms','--m-card-ease':'cubic-bezier(.34,1.56,.64,1)','--m-card-lift':'5px','--m-chip-dur':'320ms' } },
+    { id: 'C', name: '电影感', vars: { '--m-page-dur':'360ms','--m-page-ease':'cubic-bezier(.4,0,.2,1)','--m-page-exit':'scale(.96)','--m-page-blur-out':'6px','--m-btn-dur':'240ms','--m-btn-ease':'cubic-bezier(.4,0,.2,1)','--m-btn-hover-scale':'1.03','--m-btn-press-scale':'0.97','--m-card-dur':'300ms','--m-card-ease':'cubic-bezier(.4,0,.2,1)','--m-card-lift':'3px','--m-chip-dur':'300ms' } },
+    { id: 'D', name: '极简瞬时', vars: { '--m-page-dur':'60ms','--m-page-ease':'linear','--m-page-exit':'none','--m-page-blur-out':'0px','--m-btn-dur':'80ms','--m-btn-ease':'linear','--m-btn-hover-scale':'1.01','--m-btn-press-scale':'0.99','--m-card-dur':'80ms','--m-card-ease':'linear','--m-card-lift':'1px','--m-chip-dur':'80ms' } }
+  ];
+  // [已废弃] 单元切换器样式：UI 入口已从皮肤工坊移除，此表仅用于清理 body 上遗留的 sw-* 类
+  var SWITCHER_STYLES = [
+    { id: 'coverflow', name: '透视堆叠' }, { id: 'cube', name: '立方体翻转' }, { id: 'flip', name: '翻牌矩阵' },
+    { id: 'glass', name: '玻璃斜板' }, { id: 'steps', name: '阶梯平台' }, { id: 'card', name: '经典域卡' },
+    { id: 'pill', name: '胶囊分段' }, { id: 'underline', name: '下划线标签' }, { id: 'dock', name: '浮岛Dock' },
+    { id: 'ribbon', name: '渐变光带' }, { id: 'slider', name: '物理滑块' }
+  ];
+  var LEDGER_STYLES = [ { id: 'cockpit', name: '驾驶舱' }, { id: 'radial', name: '放射' } ];
+
+  var DEFAULT = { scheme: 'orange', texture: 'glass', mode: 'light', motion: 'B', switcherStyle: 'card', ledgerStyle: 'cockpit' };
 
   function load() {
     try { return JSON.parse(localStorage.getItem(STORE_KEY)) || null; } catch (e) { return null; }
@@ -189,6 +257,9 @@
   var Skin = {
     SKINS: SCHEMES,
     TEXTURES: TEXTURES,
+    MOTIONS: MOTIONS,
+    SWITCHER_STYLES: SWITCHER_STYLES,
+    LEDGER_STYLES: LEDGER_STYLES,
     state: normalize(Object.assign({}, DEFAULT, load())),
 
     _scheme: function () {
@@ -204,6 +275,13 @@
       Object.keys(toks).forEach(function (k) { root.style.setProperty(k, toks[k]); });
       root.setAttribute('data-theme', mode); // 亮/暗基底，驱动任何基于属性的 CSS（含文字/图标高对比）
       root.setAttribute('data-scheme', this.state.scheme); // 方案标识（orange/blue/green/violet/qoo），供主题专属样式
+      // 动效 CSS 变量（驱动全站过渡/按压/悬浮）
+      for (var mi = 0; mi < MOTIONS.length; mi++) {
+        if (MOTIONS[mi].id === (this.state.motion || 'B')) {
+          Object.keys(MOTIONS[mi].vars).forEach(function (k) { root.style.setProperty(k, MOTIONS[mi].vars[k]); });
+          break;
+        }
+      }
       var body = document.body;
       if (body) {
         body.classList.add('skin-on');
@@ -211,6 +289,11 @@
         LEGACY_CLASSES.forEach(function (c) { body.classList.remove(c); });
         TEX_IDS.forEach(function (id) { body.classList.remove('tex-' + id); });
         body.classList.add('tex-' + this.state.texture);
+        // 切换器样式 / 台账布局 body 类
+        SWITCHER_STYLES.forEach(function (x) { body.classList.remove('sw-' + x.id); });
+        body.classList.add('sw-' + (this.state.switcherStyle || 'card'));
+        body.classList.remove('ledger-cockpit', 'ledger-radial');
+        body.classList.add('ledger-' + (this.state.ledgerStyle || 'cockpit'));
       }
       save(this.state);
       this._sync();
@@ -220,6 +303,10 @@
     setScheme: function (id) { this.state.scheme = id; this.apply(); },
     setTexture: function (id) { this.state.texture = id; normalize(this.state); this.apply(); },
     toggleMode: function () { this.state.mode = this.state.mode === 'dark' ? 'light' : 'dark'; this.apply(); },
+    setMotion: function (id) { this.state.motion = id; this.apply(); },
+    // [已废弃] 单元切换器已由 Portal 取代，皮肤工坊入口已移除；此方法仅保留兼容旧调用
+    setSwitcherStyle: function (id) { this.state.switcherStyle = id; this.apply(); if (typeof window.__rerenderModuleSwitch === 'function') { try { window.__rerenderModuleSwitch(); } catch (e) {} } },
+    setLedgerStyle: function (id) { this.state.ledgerStyle = id; this.apply(); if (typeof window.__rerenderLedger === 'function') { try { window.__rerenderLedger(); } catch (e) {} } },
 
     _sync: function () {
       var panel = document.getElementById('skin-switcher');
@@ -232,6 +319,12 @@
       });
       panel.querySelectorAll('[data-mode]').forEach(function (b) {
         b.classList.toggle('active', b.getAttribute('data-mode') === (Skin.state.mode || 'light'));
+      });
+      panel.querySelectorAll('[data-motion]').forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-motion') === (Skin.state.motion || 'B'));
+      });
+      panel.querySelectorAll('[data-ledger]').forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-ledger') === (Skin.state.ledgerStyle || 'cockpit'));
       });
     },
 
@@ -248,16 +341,21 @@
         return '<button type="button" class="skin-chip" data-tex="' + t.id + '" title="' + (t.desc || t.name) + '">' +
           '<i class="skin-chip-dot tex-dot-' + t.id + '"></i>' + t.name + '</button>';
       }).join('');
+      var motionChips = MOTIONS.map(function (m) {
+        return '<button type="button" class="skin-chip" data-motion="' + m.id + '">M-' + m.id + ' ' + m.name + '</button>';
+      }).join('');
+      // LEDGER_STYLES 入口已从皮肤工坊移除，台账布局（V-A/V-B）由 Portal 统一选择
 
       panel.innerHTML =
         '<button type="button" class="skin-fab" id="skin-fab" title="皮肤与质感">🎨</button>' +
         '<div class="skin-panel" id="skin-panel">' +
-          '<div class="skin-panel-head"><span>皮肤工坊</span><button type="button" class="skin-close" id="skin-close">×</button></div>' +
+          '<div class="skin-panel-head"><button type="button" class="skin-close" id="skin-close">×</button></div>' +
           '<div class="skin-section"><div class="skin-section-title">配色预设</div><div class="skin-swatches">' + swatches + '</div></div>' +
           '<div class="skin-section"><div class="skin-section-title">深浅模式</div><div class="skin-modes">' +
             '<button type="button" class="skin-mode-btn" data-mode="light">☀️ 亮色</button>' +
             '<button type="button" class="skin-mode-btn" data-mode="dark">🌙 暗色</button>' +
           '</div></div>' +
+          '<div class="skin-section"><div class="skin-section-title">动效</div><div class="skin-chips">' + motionChips + '</div></div>' +
           '<div class="skin-section"><div class="skin-section-title">质感</div><div class="skin-chips">' + texChips + '</div></div>' +
         '</div>';
       document.body.appendChild(panel);
@@ -294,6 +392,12 @@
       });
       panel.querySelectorAll('[data-mode]').forEach(function (b) {
         b.addEventListener('click', function () { Skin.state.mode = b.getAttribute('data-mode'); Skin.apply(); });
+      });
+      panel.querySelectorAll('[data-motion]').forEach(function (b) {
+        b.addEventListener('click', function () { Skin.setMotion(b.getAttribute('data-motion')); });
+      });
+      panel.querySelectorAll('[data-ledger]').forEach(function (b) {
+        b.addEventListener('click', function () { Skin.setLedgerStyle(b.getAttribute('data-ledger')); });
       });
 
       this._sync();

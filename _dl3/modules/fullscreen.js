@@ -17,23 +17,27 @@
   var TITLES = {
     bigdata: '大数据展示 · 鹊动FAC健康看板',
     sarc: '老年人体重与肌少症 · 数据看板',
-    fall: '老年跌倒风险 · 数据看板'
+    fall: '老年跌倒风险 · 数据看板',
+    spine: '青少年脊柱健康 · 数据看板'
   };
   var ROUTE_MAP = {
     bigdata: function () { return window.Pages.bigdata(); },
     sarc: function () { return window.Pages.sarcopeniaStats(); },
-    fall: function () { return window.Pages.fallRiskStats(); }
+    fall: function () { return window.Pages.fallRiskStats(); },
+    spine: function () { return window.Pages.bigdata(); }
   };
 
   function fsKind() {
     var p = new URLSearchParams(location.search).get('fs');
-    return (p === 'bigdata' || p === 'sarc' || p === 'fall') ? p : null;
+    return (p === 'bigdata' || p === 'sarc' || p === 'fall' || p === 'spine') ? p : null;
   }
 
   /* 入口 1：从看板页按钮触发，打开独立大屏窗口 */
   function openKiosk(kind) {
-    if (kind !== 'bigdata' && kind !== 'sarc' && kind !== 'fall') return null;
-    var url = location.pathname + '?fs=' + kind;
+    if (kind !== 'bigdata' && kind !== 'sarc' && kind !== 'fall' && kind !== 'spine') return null;
+    // 脊柱看板复用大数据外壳，需带 ?dir=spine 让其首屏直接定位到脊柱方向
+    var tail = (kind === 'spine') ? '#/bigdata?dir=spine' : '';
+    var url = location.pathname + '?fs=' + kind + tail;
     var w = window.open(url, 'quedong_kiosk_' + kind, 'width=1440,height=900');
     if (!w) {
       if (window.U) U.toast('浏览器拦截了弹出窗口，请允许本站点弹出后重试', 'warning');

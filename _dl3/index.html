@@ -3,8 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <title>鹊动FAC功能评估与干预系统</title>
   <base href="/" />
+  <!-- 本地 three.js（ES Module）；供肌少症评估页 3D 盾牌视图动态 import 使用 -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./vendor/three/three.module.js",
+      "three/addons/": "./vendor/three/addons/"
+    }
+  }
+  </script>
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="styles.override.css" />
 </head>
@@ -13,129 +25,113 @@
 
   <!-- 页面模板容器 -->
   <template id="tpl-login">
-    <div class="login-page">
-      <div class="login-hero">
-        <div class="login-hero-orbs" aria-hidden="true">
-          <span class="hero-orb hero-orb-1"></span>
-          <span class="hero-orb hero-orb-2"></span>
-          <span class="hero-orb hero-orb-3"></span>
-        </div>
-        <div class="login-hero-inner">
-          <div class="login-brand">
-            <img src="images/logo.png" alt="鹊动 Logo" onerror="this.style.display='none'" />
-            <div class="login-brand-texts">
-              <span class="login-brand-main">鹊动FAC</span>
-              <span class="login-brand-sub">功能评估与干预系统</span>
-            </div>
-          </div>
+    <div class="login-page-v3">
+      <!-- 星河深空背景层 -->
+      <canvas class="login-v3-particles" id="login-v3-particles" aria-hidden="true"></canvas>
+      <!-- 3D 粒子汇聚前景层 -->
+      <canvas class="login-v3-fx" id="login-v3-fx" aria-hidden="true"></canvas>
 
-          <div class="login-hero-stage">
-          <div class="login-hero-deco" aria-hidden="true">
-            <svg class="deco-svg" viewBox="0 0 480 360" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <linearGradient id="decoGrad" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0" class="g-stop-1" />
-                  <stop offset="1" class="g-stop-2" />
-                </linearGradient>
-                <pattern id="dotGrid" width="32" height="32" patternUnits="userSpaceOnUse">
-                  <circle cx="2" cy="2" r="1.5" class="f-grid" />
-                </pattern>
-              </defs>
-
-              <rect x="0" y="0" width="480" height="360" fill="url(#dotGrid)" />
-
-              <g transform="translate(340,140)">
-                <circle r="34" class="s-muted" />
-                <circle r="62" class="s-muted" />
-                <circle r="92" class="s-faint" />
-                <circle r="120" class="s-faint" />
-              </g>
-
-              <path class="deco-wave s-primary-grad" d="M0,250 C90,190 170,300 280,235 C360,188 430,250 480,210" />
-              <path class="deco-wave deco-wave-2 s-accent" d="M0,288 C100,250 190,330 300,278 C380,240 440,288 480,262" />
-
-              <path class="deco-line s-accent" d="M40,300 L110,252 L170,272 L240,196 L310,214 L388,120" />
-              <circle cx="388" cy="120" r="5" class="f-accent" />
-              <circle cx="240" cy="196" r="3.5" class="f-accent" />
-              <circle cx="110" cy="252" r="3.5" class="f-accent" />
-
-              <circle cx="60" cy="120" r="3" class="f-primary" />
-              <circle cx="200" cy="90" r="2.5" class="f-muted" />
-              <circle cx="440" cy="300" r="3" class="f-primary" />
-              <line x1="150" y1="60" x2="210" y2="60" class="s-muted" />
-              <line x1="40" y1="180" x2="40" y2="240" class="s-muted" />
-            </svg>
-          </div>
-          <img class="login-hero-img" src="images/home-hero.png" alt="鹊动FAC功能评估与干预系统" onerror="this.style.display='none'" />
-          </div>
-
-          <div class="login-hero-tagline">功能评估.数智驱动.全程管理</div>
-        </div>
-      </div>
-      <div class="login-card-wrap">
-        <div class="login-card">
-          <div class="login-header">
-          <img src="images/logo.png" alt="鹊动 Logo" />
-          <div class="login-header-texts">
-            <h1>鹊动FAC</h1>
-            <p>功能评估与干预系统</p>
+      <!-- 中央 3D 舞台：FAC 功能评估大 logo 缓慢旋转 -->
+      <div class="login-v3-stage" id="login-v3-stage">
+        <div class="login-v3-logo-wrap" id="login-v3-logo-wrap">
+          <div class="login-v3-logo-3d">
+            <img src="images/logo-fac-transparent.png" alt="FAC 功能评估" class="login-v3-logo-img" loading="eager" onerror="this.style.display='none'" />
+            <div class="login-v3-logo-shine"></div>
+            <div class="login-v3-logo-shadow"></div>
           </div>
         </div>
-        <div class="login-body">
-          <div class="login-tabs">
-            <div class="login-tab active" data-tab="login">账号登录</div>
-            <div class="login-tab" data-tab="register">注册账号</div>
-          </div>
-          <form id="login-form">
-            <div class="form-row login-form-row">
-              <div class="form-group">
-                <label>用户名 <span class="required">*</span></label>
-                <input type="text" name="username" placeholder="请输入用户名" required />
-              </div>
-              <div class="form-group">
-                <label>密码 <span class="required">*</span></label>
-                <input type="password" name="password" placeholder="请输入密码" required />
-              </div>
-            </div>
-            <button type="submit" class="btn btn-primary btn-lg" style="width:100%; margin-top:8px;">登 录</button>
-          </form>
-          <form id="register-form" class="hidden">
-            <div class="form-row login-form-row">
-              <div class="form-group">
-                <label>真实姓名 <span class="required">*</span></label>
-                <input type="text" name="displayName" required />
-              </div>
-              <div class="form-group">
-                <label>用户名 <span class="required">*</span></label>
-                <input type="text" name="username" placeholder="字母数字，至少3位" required />
-              </div>
-              <div class="form-group">
-                <label>登录密码 <span class="required">*</span></label>
-                <input type="password" name="password" placeholder="至少6位" required />
-              </div>
-              <div class="form-group">
-                <label>确认密码 <span class="required">*</span></label>
-                <input type="password" name="passwordConfirm" required />
-              </div>
-              <div class="form-group">
-                <label>联系手机号</label>
-                <input type="tel" name="phone" />
-              </div>
-            </div>
-            <button type="submit" class="btn btn-primary btn-lg" style="width:100%; margin-top:8px;">注 册</button>
-          </form>
-        </div>
+        <div class="login-v3-subtitle">鹊动 FAC 功能评估与干预系统</div>
       </div>
 
-      <!-- 小Qoo 登录吉祥物：点击弹出健康提示（桌面宠物对话效果） -->
-      <div class="login-mascot-wrap" aria-label="小Qoo 健康助手">
-        <img class="login-mascot" src="assets/qoo.png" alt="小Qoo" tabindex="0" onerror="this.style.display='none'" />
-        <div class="qoo-bubble" role="dialog" aria-live="polite" aria-hidden="true">
+      <!-- 吉祥物小 Qoo -->
+      <div class="login-v3-mascot">
+        <img src="images/qoo-3d.png" alt="小Qoo" class="login-v3-mascot-img" tabindex="0" loading="eager" onerror="this.style.display='none'" />
+        <div class="qoo-bubble-v2" role="dialog" aria-live="polite" aria-hidden="true">
           <div class="qoo-bubble-tail"></div>
           <div class="qoo-bubble-body">
             <div class="qoo-bubble-text"></div>
             <button class="qoo-bubble-close" aria-label="关闭提示" title="关闭">×</button>
           </div>
+        </div>
+      </div>
+
+      <!-- 进入登录提示 -->
+      <div class="login-v3-hint" id="login-v3-hint">
+        <span>点击或下滑进入登录</span>
+        <div class="login-v3-mouse"><div class="login-v3-wheel"></div></div>
+      </div>
+
+      <!-- 悬浮玻璃登录卡片 -->
+      <div class="login-v3-card" id="login-v3-card">
+        <button type="button" class="login-v3-card-close" id="login-v3-card-close" aria-label="收起登录">×</button>
+        <div class="login-v3-card-inner">
+          <h1 class="login-card-title">欢迎登录</h1>
+          <p class="login-card-subtitle">鹊动 FAC 功能评估与干预系统</p>
+
+          <div class="login-tabs-v2">
+            <div class="login-tab-v2 active" data-tab="login">账号登录</div>
+            <div class="login-tab-v2" data-tab="register">注册账号</div>
+          </div>
+
+          <form id="login-form">
+            <div class="login-input-v2">
+              <span class="login-input-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              </span>
+              <input type="text" name="username" placeholder="请输入账号" required autocomplete="username" />
+            </div>
+            <div class="login-input-v2">
+              <span class="login-input-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </span>
+              <input type="password" name="password" placeholder="请输入密码" required autocomplete="current-password" />
+            </div>
+            <button type="submit" class="btn btn-primary btn-lg login-submit-v2">登 录</button>
+            <div class="login-links-v2">
+              <a href="javascript:;" data-action="forgot">忘记密码</a>
+              <span class="login-link-dot"></span>
+              <a href="javascript:;" data-action="apply">账号申请</a>
+              <span class="login-link-dot"></span>
+              <a href="javascript:;" class="js-switch-register">注册账号</a>
+            </div>
+          </form>
+
+          <form id="register-form" class="hidden">
+            <div class="login-input-v2">
+              <span class="login-input-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              </span>
+              <input type="text" name="displayName" placeholder="真实姓名" required />
+            </div>
+            <div class="login-input-v2">
+              <span class="login-input-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              </span>
+              <input type="text" name="username" placeholder="用户名（字母数字，至少3位）" required />
+            </div>
+            <div class="login-input-v2">
+              <span class="login-input-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </span>
+              <input type="password" name="password" placeholder="登录密码（至少6位）" required />
+            </div>
+            <div class="login-input-v2">
+              <span class="login-input-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </span>
+              <input type="password" name="passwordConfirm" placeholder="确认密码" required />
+            </div>
+            <div class="login-input-v2">
+              <span class="login-input-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+              </span>
+              <input type="tel" name="phone" placeholder="联系手机号" />
+            </div>
+            <button type="submit" class="btn btn-primary btn-lg login-submit-v2">注 册</button>
+            <div class="login-links-v2">
+              <a href="javascript:;" class="js-switch-login">已有账号？返回登录</a>
+            </div>
+          </form>
         </div>
       </div>
     </div>
@@ -158,16 +154,22 @@
       </aside>
       <div class="main-area">
         <header class="topbar">
-          <div class="topbar-left">
-            <button class="mobile-menu-btn" id="mobile-menu-btn">☰</button>
-            <h2 class="page-title" id="page-title">工作台</h2>
+        <div class="topbar-left">
+          <button class="mobile-menu-btn" id="mobile-menu-btn">☰</button>
+          <div class="return-bar hidden" id="return-bar">
+            <button class="return-btn icon-btn" id="btn-back" title="返回上一层" aria-label="返回上一层"><span class="rb-ic">←</span><span class="rb-tx">返回上一层</span></button>
+            <button class="return-btn icon-btn" id="btn-home" title="返回主页" aria-label="返回主页"><span class="rb-ic">🏠</span><span class="rb-tx">主页</span></button>
           </div>
+          <span class="current-unit-label" id="current-unit-label"></span>
+          <h2 class="page-title" id="page-title">工作台</h2>
+        </div>
           <div class="topbar-actions">
             <button class="btn btn-ghost" id="theme-toggle" title="切换主题">🌓</button>
             <span id="current-user-name" style="font-size:14px; color:var(--text-secondary);"></span>
             <button class="btn btn-secondary btn-sm" id="logout-btn">退出登录</button>
           </div>
         </header>
+        <div class="module-bar" id="module-switch"></div>
         <main class="content-area" id="main-content"></main>
       </div>
     </div>
@@ -185,12 +187,15 @@
   <script src="modules/ocr.js"></script>
   <script src="lib/strength-lib.js"></script>
   <script src="lib/sarc-exercise-lib.js"></script>
+  <script src="lib/spine-exercise-lib.js"></script>
   <script src="modules/constants.js"></script>
   <script src="modules/diagrams.js"></script>
   <script src="modules/calc.js"></script>
   <!-- 2. 核心应用层（声明 AppState / U / Pages 容器，注册 __BOOT__，不自动运行） -->
   <script src="modules/themes.js"></script>
   <script src="app.js"></script>
+  <!-- 评估驾驶舱通用骨架（被 spine.js / sarcopenia.js / assessment.js 复用） -->
+  <script src="modules/assess-cockpit.js?v=20260819u"></script>
   <!-- AI 配图档案（存入患者媒体库 + 方案页画廊；必须在 plan.js / ai-reason.js 之前） -->
   <script src="modules/ai-image-archive.js"></script>
   <!-- 县区数据（在 patient.js 之前，提供 window.CHINA_REGIONS 给三级联动） -->
@@ -202,11 +207,13 @@
   <script src="modules/patient.js"></script>
   <script src="modules/assessment.js"></script>
   <script src="modules/lifestyle.js"></script>
+  <script src="modules/plan-view.js"></script>
   <script src="modules/plan.js"></script>
   <script src="modules/plan-engine.js"></script>
   <script src="modules/isokinetic.js"></script>
   <script src="modules/isotonic.js"></script>
   <script src="modules/report.js"></script>
+  <script src="modules/report-center.js"></script>
   <script src="modules/center.js"></script>
   <script src="modules/dashboard-core.js"></script>
   <script src="modules/bigdata.js"></script>
@@ -226,6 +233,11 @@
   <script src="modules/sarcopenia-core.js"></script>
   <script src="modules/sarcopenia.js"></script>
   <script src="modules/sarcopenia-engine.js"></script>
+  <!-- 第三大单元：青少年脊柱健康管理（AIS 特发性脊柱侧弯）独立模块 -->
+  <script src="modules/spine3d.js"></script>
+  <!-- 脊柱蓝牙设备采集骨架（Web Bluetooth 标准 GATT + Tauri 桌面端兼容） -->
+  <script src="modules/spine-device.js"></script>
+  <script src="spine.js"></script>
   <!-- 第三大评估方向：跌倒风险评估（与体重管理/肌少症平级）-->
   <script src="modules/fallrisk.js"></script>
   <script src="modules/fall-risk-stats.js"></script>
@@ -238,7 +250,7 @@
   <script src="modules/ai-reason.js"></script>
   <!-- 资讯与系统消息推送模块 -->
   <script src="modules/infopush.js"></script>
-  <!-- 小Qoo 系统宠物：跨页全局浮层，挂载在 body 末尾 -->
+  <!-- 小Qoo 系统宠物：跨页全局浮层，点击图标打开 AI 对话窗口（功能保持原有形式） -->
   <script src="modules/qoo-pet.js"></script>
   <!-- 报告转图片下载（手机端「保存图片」功能依赖） -->
   <script src="assets/lib/html2canvas.min.js"></script>

@@ -56,6 +56,7 @@
   function mediaKey(lib, id) {
     if (lib === 'strength') return 'slib:' + id;
     if (lib === 'sarc') return 'sarc:' + id;
+    if (lib === 'spine') return 'spine:' + id;
     return id;
   }
   // 读取已有本地媒体并写入新上传的 video/image Blob；返回对象标记 '__local__' 或外链 URL
@@ -169,6 +170,7 @@
   async function getList(lib) {
     if (lib === 'strength') return await StrengthLib.getExercises();
     if (lib === 'sarc') return await SarcExerciseLib.getExercises();
+    if (lib === 'spine') return await SpineExerciseLib.getExercises();
     return await DB.getPlanLibrary();
   }
 
@@ -217,6 +219,28 @@
     </div>`;
   }
 
+  function spineCard(e) {
+    const fig = (window.SpineExerciseLib && SpineExerciseLib.figureSVG) ? SpineExerciseLib.figureSVG(e.posture) : '';
+    return `
+    <div class="action-card" data-id="${U.esc(e.id)}" data-lib="spine">
+      <div class="ac-top">
+        <span class="ac-badge cat-${U.esc(e.cat)}">${U.esc(e.catLabel || e.cat)}</span>
+        <div class="ac-actions">
+          <button class="icon-btn al-edit" title="编辑">✎</button>
+          <button class="icon-btn al-del" title="删除">🗑</button>
+        </div>
+      </div>
+      <div class="ac-figwrap">${fig}</div>
+      <div class="ac-name">${U.esc(e.name)}</div>
+      <div class="ac-tags"><span class="ac-tag">${U.esc(e.levelLabel || '')}</span></div>
+      ${e.params ? `<div class="ac-field"><span class="ac-k">参数</span><span class="ac-v">${U.esc(e.params)}</span></div>` : ''}
+      ${e.note ? `<div class="ac-note">📌 ${PlanMediaView.fold(e.note, '医嘱')}</div>` : ''}
+      ${e.points ? `<div class="ac-field"><span class="ac-k">要点</span><span class="ac-v">${PlanMediaView.fold(e.points, '要点')}</span></div>` : ''}
+      ${e.audience ? `<div class="ac-field"><span class="ac-k">适用</span><span class="ac-v">${U.esc(e.audience)}</span></div>` : ''}
+      ${PlanMediaView.thumb(e, 'spine', e.id)}
+    </div>`;
+  }
+
   function planCard(e) {
     const cats = planCats();
     const media = (e.video ? '▶️视频 ' : '') + (e.image ? '🖼️图片' : '');
@@ -252,6 +276,10 @@
       row('分类', e.catLabel || e.cat); row('姿态', e.posture); row('训练参数', e.params);
       row('动作要点', e.points); row('医嘱注释', e.note); row('适用人群', e.audience);
       if (e.tags && e.tags.length) row('适配标签', e.tags.join('，'));
+    } else if (lib === 'spine') {
+      row('分类', e.catLabel || e.cat); row('姿态', e.posture); row('训练参数', e.params);
+      row('动作要点', e.points); row('医嘱注释', e.note); row('适用人群', e.audience);
+      if (e.tags && e.tags.length) row('适配标签', e.tags.join('，'));
     } else {
       row('类别', (planCats()[e.category] || e.category));
       row('目标肌群', e.target); row('训练剂量', e.dose); row('动作描述', e.desc);
@@ -263,12 +291,14 @@
   function cardHTML(e, lib) {
     if (lib === 'strength') return strengthCard(e);
     if (lib === 'sarc') return sarcCard(e);
+    if (lib === 'spine') return spineCard(e);
     return planCard(e);
   }
 
   function searchKey(e, lib) {
     if (lib === 'strength') return [e.name, e.muscle, e.points, e.audience, e.equipLabel].join(' ');
     if (lib === 'sarc') return [e.name, e.catLabel, e.note, e.points, e.audience, (e.tags || []).join(' ')].join(' ');
+    if (lib === 'spine') return [e.name, e.catLabel, e.note, e.points, e.audience, (e.tags || []).join(' ')].join(' ');
     return [e.name, e.desc, e.target, e.category, ruleText(e.rules)].join(' ');
   }
 
@@ -426,6 +456,87 @@
     });
   }
 
+  function openSpineEditor(existing) {
+    const e = existing || {};
+    const id = e.id || ('SP' + String(Date.now()).slice(-5));
+    const catOpts = SpineExerciseLib.CATS
+      .map(c => `<option value="${c.key}" ${(e.cat || 'scoliosis') === c.key ? 'selected' : ''}>${c.label}</option>`).join('');
+    const postureOpts = [
+      ['seated', '坐姿'], ['stand_support', '扶椅/靠墙'], ['prone', '四点支撑/俯卧'], ['stand_free', '无扶手站立(进阶)'], ['side_lying', '侧卧(施罗斯)'], ['supine', '仰卧']
+    ].map(([v, l]) => `<option value="${v}" ${e.posture === v ? 'selected' : ''}>${l}</option>`).join('');
+    const lv = e.levels || ['初级'];
+    const has = (v) => lv.indexOf(v) >= 0 ? 'checked' : '';
+    const body = `
+      <form id="sp-form" class="form-row" style="grid-template-columns:1fr 1fr;">
+        <div class="form-group" style="grid-column:1/-1;"><label>动作名称 <span class="required">*</span></label><input name="name" value="${U.esc(e.name || '')}" required /></div>
+        <div class="form-group"><label>分类</label><select name="cat">${catOpts}</select></div>
+        <div class="form-group"><label>姿态</label><select name="posture">${postureOpts}</select></div>
+        <div class="form-group" style="grid-column:1/-1;"><label>难度梯度</label>
+          <div style="display:flex;gap:16px;padding-top:6px;">
+            <label class="checkbox-item"><input type="checkbox" name="levels" value="初级" ${has('初级')}/> 初级</label>
+            <label class="checkbox-item"><input type="checkbox" name="levels" value="进阶" ${has('进阶')}/> 进阶</label>
+          </div>
+        </div>
+        <div class="form-group" style="grid-column:1/-1;"><label>训练参数</label><input name="params" value="${U.esc(e.params || '')}" placeholder="如：每组12次，2组" /></div>
+        <div class="form-group" style="grid-column:1/-1;"><label>动作要点</label><textarea name="points" rows="2" placeholder="发力顺序、动作细节">${U.esc(e.points || '')}</textarea></div>
+        <div class="form-group" style="grid-column:1/-1;"><label>医嘱注释（显示在方案与卡片上）</label><textarea name="note" rows="2" placeholder="如：向凹侧主动侧屈、配合旋转角呼吸">${U.esc(e.note || '')}</textarea></div>
+        <div class="form-group" style="grid-column:1/-1;"><label>适用人群</label><input name="audience" value="${U.esc(e.audience || '')}" placeholder="如：特发性脊柱侧弯、姿态不良青少年" /></div>
+        <div class="form-group" style="grid-column:1/-1;"><label>适配标签（逗号分隔）</label><input name="tags" value="${U.esc((e.tags || []).join('，'))}" placeholder="如：Cobb角10°-45°、ATR≥5°" /></div>
+        ${mediaRow('sp', 'video', e.video, '视频（≤500MB，或填 URL）')}
+        ${mediaRow('sp', 'image', e.image, '图片（≤20MB）')}
+      </form>`;
+    const modalRef = U.modal({ title: existing ? '编辑青少年脊柱健康动作' : '新增青少年脊柱健康动作', body, width: 700, footer: `<button class="btn btn-primary btn-sm" id="sp-save">保存</button>` });
+    const spStoreId = mediaKey('spine', id);
+    if (e.video === '__local__') fillLocalPreview(modalRef, 'sp-video-prev', 'video', spStoreId);
+    if (e.image === '__local__') fillLocalPreview(modalRef, 'sp-img-prev', 'image', spStoreId);
+    const spDel = { video: false, image: false };
+    wireMediaDelete(modalRef, 'sp', spDel);
+    U.qs('#sp-save', modalRef.overlay).addEventListener('click', async () => {
+      const f = U.formData(U.qs('#sp-form', modalRef.overlay));
+      if (!f.name || !f.name.trim()) return U.toast('warning', '请填写动作名称');
+      const saveBtn = U.qs('#sp-save', modalRef.overlay);
+      if (saveBtn.disabled) return;
+      saveBtn.disabled = true; saveBtn.textContent = '保存中…';
+      try {
+        let levels = f.levels;
+        if (typeof levels === 'string') levels = [levels];
+        if (!levels || !levels.length) levels = ['初级'];
+        const cat = f.cat;
+        const catLabel = (SpineExerciseLib.CATS.find(c => c.key === cat) || {}).label || cat;
+        const vFile = U.qs('#sp-video', modalRef.overlay).files[0];
+        const iFile = U.qs('#sp-image', modalRef.overlay).files[0];
+        if (vFile && vFile.size > MAX_VIDEO) { saveBtn.disabled = false; saveBtn.textContent = '保存'; return U.toast('error', '视频超过 500MB，请压缩或改用外链 URL'); }
+        if (iFile && iFile.size > MAX_IMAGE) { saveBtn.disabled = false; saveBtn.textContent = '保存'; return U.toast('error', '图片超过 20MB，请压缩后上传'); }
+        const videoUrl = (f.videoUrl && f.videoUrl.trim()) ? f.videoUrl.trim() : '';
+        const media = await resolveMedia(spStoreId, e, vFile, iFile, spDel.video, spDel.image);
+        const obj = {
+          id,
+          no: e.no || (SpineExerciseLib.EXERCISES.length + 1),
+          cat, catLabel,
+          name: f.name.trim(),
+          levels,
+          levelLabel: levels.join('/'),
+          posture: f.posture,
+          params: f.params || '',
+          points: f.points || '',
+          audience: f.audience || '',
+          note: f.note || '',
+          tags: (f.tags || '').split(/[，,]/).map(s => s.trim()).filter(Boolean),
+          video: videoUrl || media.video,
+          image: media.image
+        };
+        await SpineExerciseLib.saveExercise(obj);
+        modalRef.close();
+        await refreshGrid();
+        U.toast('success', '已保存青少年脊柱健康动作');
+      } catch (er) {
+        console.error('青少年脊柱健康动作保存失败:', er);
+        saveBtn.disabled = false; saveBtn.textContent = '保存';
+        U.toast('error', isQuotaError(er) ? '保存失败：本地存储空间不足，请压缩媒体或改用外链 URL' : ('保存失败：' + (er && er.message ? er.message : '未知错误')));
+      }
+    });
+  }
+
   function openPlanEditor(existing) {
     const e = existing || { id: 'L' + String(Date.now()).slice(-6), name: '', category: 'resistance', desc: '', rules: { bmiMin: '', bmiMax: '', weak: 'any', risk: '' } };
     const cats = planCats();
@@ -503,9 +614,10 @@
       <div class="page-header al-header"><div><p class="text-muted">管理员可在此统一管理全部运动方案库，以卡片形式编辑、新增与删除，每个方案均可上传图片与视频。</p></div><img class="al-qoo" src="assets/qoo.png" alt="小Qoo" onerror="this.style.display='none'" /></div>
 
       <div class="seg-tabs" id="al-tabs">
-        <button class="seg-tab active" data-tab="strength">🏋️ 徒手肌力训练方案库</button>
-        <button class="seg-tab" data-tab="sarc">🧓 肌少症居家方案库</button>
-        <button class="seg-tab" data-tab="plan">🎯 通用运动方案库</button>
+        <button class="seg-tab active" data-tab="strength"><svg class="al-tab-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9v6M6 10v4M18 10v4M21 9v6M6 12h12"/></svg>徒手肌力训练方案库</button>
+        <button class="seg-tab" data-tab="sarc"><svg class="al-tab-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="3"/><path d="M5 21c0-4 3-6 7-6s7 2 7 6"/></svg>肌少症居家方案库</button>
+        <button class="seg-tab" data-tab="spine"><svg class="al-tab-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M9 6h6M9 10h6M9 14h6M9 18h6"/></svg>青少年脊柱健康动作库</button>
+        <button class="seg-tab" data-tab="plan"><svg class="al-tab-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>通用运动方案库</button>
       </div>
 
       <div class="al-toolbar">
@@ -527,8 +639,8 @@
     const countEl = U.qs('#al-count', root);
     const searchEl = U.qs('#al-search', root);
 
-    const tabTitle = { strength: '徒手肌力训练方案库', sarc: '肌少症居家方案库', plan: '通用运动方案库' };
-    const addLabel = { strength: '＋ 新增徒手肌力训练方案', sarc: '＋ 新增肌少症居家方案', plan: '＋ 新增方案动作' };
+    const tabTitle = { strength: '徒手肌力训练方案库', sarc: '肌少症居家方案库', spine: '青少年脊柱健康动作库', plan: '通用运动方案库' };
+    const addLabel = { strength: '＋ 新增徒手肌力训练方案', sarc: '＋ 新增肌少症居家方案', spine: '＋ 新增青少年脊柱健康动作', plan: '＋ 新增方案动作' };
 
     function refreshToolbar() {
       U.qs('#al-add', root).textContent = addLabel[tab];
@@ -559,6 +671,7 @@
         const item = list.find(x => x.id === id);
         if (tab === 'strength') openStrengthEditor(item);
         else if (tab === 'sarc') openSarcEditor(item);
+        else if (tab === 'spine') openSpineEditor(item);
         else openPlanEditor(item);
       }));
       U.qsa('.al-del', grid).forEach(btn => btn.addEventListener('click', async () => {
@@ -567,9 +680,10 @@
         const isDefault = card.dataset.default === '1';
         const msg = isDefault ? '这是系统默认动作，删除后可在「恢复默认动作」重新导入。确认删除？' : '确认删除该动作？';
         U.confirm(msg, async () => {
-          if (tab === 'strength') { await StrengthLib.deleteExercise(id); try { await DB.deletePlanMedia(mediaKey('strength', id)); } catch (e2) {} }
-          else if (tab === 'sarc') { await SarcExerciseLib.deleteExercise(id); try { await DB.deletePlanMedia(mediaKey('sarc', id)); } catch (e2) {} }
-          else {
+        if (tab === 'strength') { await StrengthLib.deleteExercise(id); try { await DB.deletePlanMedia(mediaKey('strength', id)); } catch (e2) {} }
+        else if (tab === 'sarc') { await SarcExerciseLib.deleteExercise(id); try { await DB.deletePlanMedia(mediaKey('sarc', id)); } catch (e2) {} }
+        else if (tab === 'spine') { await SpineExerciseLib.deleteExercise(id); try { await DB.deletePlanMedia(mediaKey('spine', id)); } catch (e2) {} }
+        else {
             const list = (await DB.getPlanLibrary()).filter(x => x.id !== id);
             await DB.savePlanLibrary(list);
             try { await DB.deletePlanMedia(id); } catch (e) {}
@@ -600,6 +714,7 @@
     U.qs('#al-add', root).addEventListener('click', () => {
       if (tab === 'strength') openStrengthEditor();
       else if (tab === 'sarc') openSarcEditor();
+      else if (tab === 'spine') openSpineEditor();
       else openPlanEditor();
     });
 
@@ -607,6 +722,7 @@
       U.confirm('确认将该动作库恢复为系统默认？自定义修改将被覆盖。', async () => {
         if (tab === 'strength') { StrengthLib.resetDefault(); U.toast('success', '已恢复徒手肌力训练默认方案库'); }
         else if (tab === 'sarc') { SarcExerciseLib.resetDefault(); U.toast('success', '已恢复肌少症居家默认方案库'); }
+        else if (tab === 'spine') { SpineExerciseLib.resetDefault(); U.toast('success', '已恢复青少年脊柱健康默认动作库'); }
         else {
           const n = await importDefaultPlanLibrary();
           U.toast('success', n ? `已恢复 ${n} 个默认方案动作` : '默认方案动作已存在');

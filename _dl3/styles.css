@@ -1741,6 +1741,8 @@ tr:hover td {
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   html, body { background: #fff !important; }
   .app-shell, .no-print { display: none !important; }
+  /* 导出/打印时隐藏全部 AI 助手浮动图标（小Qoo 宠物 / 气泡 / AI 悬浮球 / 报告吉祥物水印），避免遮挡打印页面 */
+  #qoo-pet, .qoo-bubble, .ai-fab, .report-cover-watermark { display: none !important; }
   #report-print-stage { display: block !important; position: static; width: 100%; padding: 0; margin: 0; }
   #report-print-stage .report-doc { max-width: 100%; margin: 0; padding: 0; box-shadow: none; border-radius: 0; background: #fff; }
   /* 不要整段避免分页（会导致大块留白），仅保护卡片/表格行不被拦腰截断 */
@@ -1765,6 +1767,10 @@ tr:hover td {
   .report-banner::before, .report-banner::after { opacity: 0.4; }
   .report-banner-icon-img, .report-aerobic-banner-img { background: radial-gradient(circle at center, rgba(242, 101, 34, 0.06) 0%, transparent 72%); }
   .report-section-icon { background: radial-gradient(circle at center, rgba(242, 101, 34, 0.06) 0%, transparent 70%); }
+  /* 导出/打印时关闭方案报告入场动画：避免动画未播完导致章节错位、与屏显报告差异过大 */
+  .sarc-plan-vscroll .report-section.sarc-section {
+    animation: none !important; opacity: 1 !important; transform: none !important;
+  }
 }
 
 select.disabled-select,
@@ -3792,10 +3798,15 @@ h3 { font-size: var(--fs-lg); line-height: var(--lh-lg); font-weight: 600; }
 .fs-btn-exit:hover { background: var(--danger, #e23b3b); color: #fff; border-color: var(--danger, #e23b3b); }
 .fs-stage {
   flex: 1; overflow: auto;
-  padding: 18px 22px 40px;
+  padding: 14px 20px 20px;
   transition: opacity .25s ease;
 }
-.fs-stage .bigdata-page { max-width: 1680px; margin: 0 auto; }
+/* 大屏看板：拉伸撑满整个屏幕（高度方向也铺满，去掉两侧 / 底部留白） */
+.fs-stage .bigdata-page { max-width: none; width: 100%; height: 100%; display: flex; flex-direction: column; }
+.fs-stage .bigdata-page > #bd-dir-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.fs-stage .bigdata-page .bigdata-grid { flex: 0 0 auto; }
+.fs-stage .bigdata-page .bigdata-grid-2 { flex: 1; min-height: 0; align-content: stretch; }
+.fs-stage .bigdata-page .bigdata-grid-2 > * { min-height: 0; }
 
 /* 大屏模式下隐藏肌少症「全模块评估明细」台账卡片 */
 .fs-kiosk .sarc-detail-card { display: none !important; }
@@ -4230,45 +4241,48 @@ h3 { font-size: var(--fs-lg); line-height: var(--lh-lg); font-weight: 600; }
 
 /* ============ 首页 3D 患者列表轮播 ============ */
 .pt-card-host { overflow: visible; }
-.pt-mid { display: grid; grid-template-columns: 560px 1fr; gap: 22px; align-items: stretch; }
-.pt-carousel-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 340px; }
-.pt-carousel { position: relative; width: 520px; height: 300px; perspective: 1200px; transform-style: preserve-3d; margin: 0 auto; }
-.pt-orbit { position: absolute; left: 50%; top: 55%; width: 430px; height: 150px; margin: -75px 0 0 -215px;
-  border: 1px dashed var(--border); border-radius: 50%; transform: rotateX(74deg); opacity: .3; pointer-events: none; }
-.pt-floor { position: absolute; left: 50%; top: 57%; width: 360px; height: 64px; margin: -32px 0 0 -180px;
-  background: radial-gradient(ellipse at center, rgba(0,0,0,.18), transparent 70%); filter: blur(7px); transform: rotateX(74deg); pointer-events: none; }
+.pt-mid { display: grid; grid-template-columns: minmax(720px, 2fr) 1fr; gap: 22px; align-items: stretch; }
+.pt-carousel-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 380px; }
+.pt-carousel { position: relative; width: 1240px; height: 760px; perspective: 2600px; transform-style: preserve-3d; margin: 0 auto; }
+.pt-orbit { position: absolute; left: 50%; top: 55%; width: 1040px; height: 380px; margin: -190px 0 0 -520px;
+  border: 1px dashed var(--border); border-radius: 50%; transform: rotateX(74deg); opacity: .28; pointer-events: none; }
+.pt-floor { position: absolute; left: 50%; top: 60%; width: 920px; height: 160px; margin: -80px 0 0 -460px;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,.22), transparent 70%); filter: blur(10px); transform: rotateX(74deg); pointer-events: none; }
 .pt-ring { position: absolute; inset: 0; transform-style: preserve-3d; transform: rotateX(-12deg) rotateY(var(--rot, 0deg));
   transition: transform 1s cubic-bezier(.23,1,.32,1); will-change: transform; }
-.pt-card { position: absolute; top: 50%; left: 50%; width: 112px; height: 150px; margin: -75px 0 0 -56px;
-  transform: rotateY(var(--a)) translateZ(180px) scale(var(--sc, .8));
-  background: linear-gradient(158deg, var(--bg-card), var(--bg-subtle));
-  border: 1px solid var(--risk-border, var(--border)); border-top: 1px solid rgba(255,255,255,.5);
-  border-radius: 18px; padding: 14px; cursor: pointer;
+.pt-card { position: absolute; top: 50%; left: 50%; width: 70px; height: 95px; margin: -47.5px 0 0 -35px;
+  transform: rotateY(var(--a)) translateZ(440px) scale(var(--sc, .8));
+  background: linear-gradient(160deg, var(--bg-card), color-mix(in srgb, var(--bg-card) 55%, var(--bg-subtle)));
+  border: 1px solid var(--risk-border, var(--border)); border-top: 1px solid rgba(255,255,255,.55);
+  border-radius: 16px; padding: 10px; cursor: pointer;
   display: flex; flex-direction: column; justify-content: space-between;
-  box-shadow: 0 18px 40px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.5);
+  box-shadow: 0 22px 50px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.55);
   transition: transform 1s cubic-bezier(.23,1,.32,1), box-shadow .4s, border-color .4s, opacity .4s;
   backface-visibility: hidden; will-change: transform, opacity, filter;
   opacity: var(--op, .55); filter: blur(var(--bl, 1px)) brightness(var(--br, .85)); overflow: hidden; }
-.pt-card::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--risk-c, var(--primary)); opacity: .9; }
-.pt-card::after  { content: ''; position: absolute; left: -25%; right: -25%; bottom: -55%; height: 60px;
+/* Portal 风格高光与边框 */
+.pt-card::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 46%; border-radius: 16px 16px 55% 55%/16px 16px 26% 26%;
+  background: linear-gradient(180deg, rgba(255,255,255,.38) 0%, rgba(255,255,255,.14) 38%, rgba(255,255,255,0) 72%);
+  pointer-events: none; opacity: .6; z-index: 1; }
+.pt-card::after  { content: ''; position: absolute; left: -25%; right: -25%; bottom: -55%; height: 70px;
   background: radial-gradient(ellipse at center, var(--risk-glow, rgba(0,0,0,.18)) 0%, transparent 65%);
   opacity: .55; transform: rotateX(74deg); pointer-events: none; }
-.pt-card .pt-shine { position: absolute; top: 0; left: 0; width: 60%; height: 100%;
-  background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,.55) 50%, transparent 65%);
-  transform: translateX(-120%); pointer-events: none; }
+.pt-card .pt-shine { position: absolute; top: 0; left: 0; width: 70%; height: 100%;
+  background: linear-gradient(120deg, transparent 32%, rgba(255,255,255,.5) 50%, transparent 68%);
+  transform: translateX(-120%); pointer-events: none; z-index: 2; }
 .pt-card:not(.is-front):hover { filter: blur(0) brightness(1); opacity: .95; }
-.pt-card.is-front { --op: 1; --sc: 1.45; --bl: 0; --br: 1;
-  border: 2px solid var(--risk-c, var(--primary)); border-top: 3px solid var(--risk-c, var(--primary));
-  box-shadow: 0 32px 64px var(--risk-glow, var(--skin-glow)), 0 0 0 1px var(--risk-border) inset, 0 1px 0 rgba(255,255,255,.6) inset;
+.pt-card.is-front { --op: 1; --sc: 3.0; --bl: 0; --br: 1;
+  border: 2px solid var(--risk-c, var(--primary)); border-top: 1px solid rgba(255,255,255,.65);
+  box-shadow: 0 40px 90px var(--risk-glow, var(--skin-glow)), 0 0 0 1px var(--risk-border) inset, 0 1px 0 rgba(255,255,255,.65) inset;
   animation: pt-pulse-front 2.4s ease-in-out infinite; z-index: 10; }
-.pt-card.is-front .pt-shine { animation: pt-shine 3s ease-in-out infinite; }
-@keyframes pt-pulse-front { 0%,100% { transform: rotateY(var(--a)) translateZ(180px) scale(1.45) rotateZ(0deg); } 50% { transform: rotateY(var(--a)) translateZ(192px) scale(1.5)  rotateZ(0.6deg); } }
+.pt-card.is-front .pt-shine { animation: pt-shine 3.5s ease-in-out infinite; }
+@keyframes pt-pulse-front { 0%,100% { transform: rotateY(var(--a)) translateZ(440px) scale(3.0) rotateZ(0deg); } 50% { transform: rotateY(var(--a)) translateZ(468px) scale(3.15) rotateZ(0.5deg); } }
 @keyframes pt-shine { 0% { transform: translateX(-120%); } 60%, 100% { transform: translateX(220%); } }
 .pt-card.high { --risk-c: #dc2626; --risk-border: rgba(220, 38, 38, .6); --risk-glow: rgba(220, 38, 38, .55); }
 .pt-card.mid  { --risk-c: #d97706; --risk-border: rgba(217, 119, 6, .6); --risk-glow: rgba(217, 119, 6, .55); }
 .pt-card.low  { --risk-c: #0f766e; --risk-border: rgba(15, 118, 110, .55); --risk-glow: rgba(15, 118, 110, .5); }
-.pt-nm { font-weight: 700; font-size: 18px; color: var(--text-primary); line-height: 1.1; }
-.pt-ag { color: var(--text-muted); font-size: 12px; margin-top: 3px; }
+.pt-nm { position: relative; z-index: 3; font-weight: 800; font-size: 10px; color: var(--text-primary); line-height: 1.15; letter-spacing: -.3px; }
+.pt-ag { position: relative; z-index: 3; color: var(--text-muted); font-size: 7px; margin-top: 4px; }
 
 /* 风险徽章：实心渐变 + 图标 + 分级指示条 */
 .pt-rk { display: flex; flex-direction: column; gap: 5px; align-self: stretch; margin-top: 4px; padding: 6px 9px;
@@ -4319,7 +4333,15 @@ h3 { font-size: var(--fs-lg); line-height: var(--lh-lg); font-weight: 600; }
 
 @media (max-width: 1100px) {
   .pt-mid { grid-template-columns: 1fr; }
-  .pt-carousel-wrap { min-height: 320px; }
+  .pt-carousel-wrap { min-height: 340px; }
+}
+@media (max-width: 760px) {
+  .pt-carousel { width: min(520px, 96vw); height: 320px; perspective: 1200px; }
+  .pt-orbit { width: 360px; height: 130px; margin: -65px 0 0 -180px; }
+  .pt-floor { width: 320px; height: 56px; margin: -28px 0 0 -160px; }
+  .pt-card { width: 120px; height: 162px; margin: -81px 0 0 -60px; transform: rotateY(var(--a)) translateZ(170px) scale(var(--sc, .8)); border-radius: 18px; padding: 14px; }
+  .pt-card::before { border-radius: 18px 18px 55% 55%/18px 18px 26% 26%; }
+  @keyframes pt-pulse-front { 0%,100% { transform: rotateY(var(--a)) translateZ(170px) scale(1.5) rotateZ(0deg); } 50% { transform: rotateY(var(--a)) translateZ(182px) scale(1.58) rotateZ(0.5deg); } }
 }
 @media (max-width: 560px) {
   .pt-carousel { width: min(460px, 92vw); height: 280px; }

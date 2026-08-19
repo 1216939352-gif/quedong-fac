@@ -551,15 +551,18 @@ function renderLogin() {
   }
 
   const loginForm = U.qs('#login-form'), registerForm = U.qs('#register-form');
-  U.qsa('.login-tab').forEach(tab => {
-    tab.onclick = () => {
-      U.qsa('.login-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      const isLogin = tab.dataset.tab === 'login';
-      loginForm.classList.toggle('hidden', !isLogin);
-      registerForm.classList.toggle('hidden', isLogin);
-    };
+  function switchLoginTab(isLogin) {
+    U.qsa('.login-tab-v2').forEach(t => t.classList.toggle('active', t.dataset.tab === (isLogin ? 'login' : 'register')));
+    loginForm.classList.toggle('hidden', !isLogin);
+    registerForm.classList.toggle('hidden', isLogin);
+  }
+  U.qsa('.login-tab-v2').forEach(tab => {
+    tab.onclick = () => switchLoginTab(tab.dataset.tab === 'login');
   });
+  const switchRegister = U.qs('.js-switch-register');
+  const switchLogin = U.qs('.js-switch-login');
+  if (switchRegister) switchRegister.onclick = () => switchLoginTab(false);
+  if (switchLogin) switchLogin.onclick = () => switchLoginTab(true);
 
   loginForm.onsubmit = async e => {
     e.preventDefault();
@@ -611,13 +614,264 @@ function renderLogin() {
     }
   };
 
+  initLoginV3();
   bindLoginMascot();
+}
+
+/* ==================== 登录页 V3：3D logo + 粒子背景 + 滚动/点击浮现登录卡片 ==================== */
+function initLoginV3() {
+  const page = U.qs('.login-page-v3');
+  const stage = U.qs('.login-v3-stage');
+  const card = U.qs('.login-v3-card');
+  const closeBtn = U.qs('.login-v3-card-close');
+  const canvas = U.qs('.login-v3-particles');
+  if (!page || !canvas) return;
+
+  let W, H;
+  const fxCanvas = U.qs('.login-v3-fx');
+  const fctx = fxCanvas ? fxCanvas.getContext('2d') : null;
+  let isDark = true;
+  let revealed = false;
+  let rafId = null;
+  let wheelLock = false;
+  let convRaf = null;
+
+  function resize() {
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+    if (fxCanvas) { fxCanvas.width = W; fxCanvas.height = H; }
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  /* ===== 星河深空背景引擎 ===== */
+  const bg = createLoginGalaxy();
+  function updateTheme() {
+    const theme = document.documentElement.getAttribute('data-theme');
+    isDark = theme !== 'light';
+  }
+  function frameBg() {
+    bg.step();
+    bg.draw(canvas.getContext('2d'), W, H, isDark);
+    rafId = requestAnimationFrame(frameBg);
+  }
+  updateTheme();
+  bg.init();
+  frameBg();
+
+  if (typeof MutationObserver !== 'undefined') {
+    new MutationObserver(updateTheme).observe(document.documentElement, {
+      attributes: true, attributeFilter: ['data-theme']
+    });
+  }
+
+  function revealLogin() {
+    if (revealed) return;
+    revealed = true;
+    page.classList.add('login-visible');
+    /* 先做一次基础远→近汇聚，给用户"看到效果"的感觉 */
+    startConverge();
+    /* 同时启用持续性的远→近汇聚循环，每 4.2s 一次，让用户随时能看到粒子动画 */
+    const timer = setInterval(function () {
+      if (!revealed) { clearInterval(timer); return; }
+      startConverge();
+    }, 4200);
+    window.__loginConvergeLoopTimer = timer;
+  }
+
+  // 进入页面 0.8s 后自动触发汇聚动效（让初次访问者也能看到 3D 粒子汇聚效果）
+  setTimeout(() => { if (!revealed) revealLogin(); }, 800);
+
+  // 进一步：登录卡片显示完成后 1.6s 再触发第二轮「远→近」粒子回卷
+  let convSecond = false;
+  setTimeout(() => { convSecond = true; }, 3200);
+
+  function hideLogin() {
+    if (!revealed) return;
+    revealed = false;
+    page.classList.remove('login-visible');
+    stopConverge();
+  }
+
+  /* ===== 星河深空背景引擎 ===== */
+  function createLoginGalaxy() {
+    let stars = [], neb = [], river = [];
+    function rand(a, b) { return a + Math.random() * (b - a); }
+    const P0x = -0.08, P0y = 0.18, P1x = 1.10, P1y = 0.82;
+    function center(u, W, H) { return { x: (P0x + (P1x - P0x) * u) * W, y: (P0y + (P1y - P0y) * u) * H + Math.sin(u * Math.PI) * 0.10 * H }; }
+    function newRiver(init) {
+      const layer = Math.random() < 0.46 ? 0 : (Math.random() < 0.62 ? 1 : 2);
+      const spd = [0.10, 0.060, 0.034][layer];
+      const warm = Math.random() < 0.06;
+      return { u: init ? Math.random() : -0.04, v: (Math.random() + Math.random() + Math.random() - 1.5) * 1.1, layer, sz: [2.4, 1.5, 1.0][layer] * rand(0.6, 1.5), sp: spd * rand(0.7, 1.35), b: rand(0.55, 1), warm, hue: warm ? rand(30, 42) : rand(198, 238), tw: rand(0, 6.28) };
+    }
+    function init() {
+      stars = [];
+      const layers = [{ n: 150, size: 1.4, b: 0.9 }, { n: 110, size: 0.9, b: 0.6 }, { n: 80, size: 0.6, b: 0.4 }];
+      for (const L of layers) for (let i = 0; i < L.n; i++) stars.push({ x: rand(0, 1), y: rand(0, 1), size: L.size * rand(0.6, 1.3), base: L.b * rand(0.4, 1), tw: rand(0, 6.28), ts: rand(0.4, 1.3) });
+      neb = [
+        { x: rand(0.12, 0.45), y: rand(0.30, 0.60), r: rand(0.4, 0.7), hue: rand(205, 245), ph: rand(0, 6) },
+        { x: rand(0.55, 0.88), y: rand(0.30, 0.62), r: rand(0.35, 0.6), hue: rand(262, 300), ph: rand(0, 6) }
+      ];
+      // 背景粒子流密度提高（460→620），为汇聚动效提供更多不重复的起点采样
+      river = []; const R = 620; for (let i = 0; i < R; i++) river.push(newRiver(true));
+    }
+    let t = 0;
+    return {
+      init,
+      step() {
+        t += 0.016;
+        for (const s of stars) s.tw += 0.02 * s.ts;
+        for (const p of river) { p.u += p.sp * 0.01; p.tw += 0.05; if (p.u > 1.06) { river.push(newRiver(false)); river.splice(river.indexOf(p), 1); } }
+      },
+      draw(ctx, W, H, dark) {
+        if (dark) {
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.fillStyle = '#0a1024';
+          ctx.fillRect(0, 0, W, H);
+          const rg = ctx.createRadialGradient(W * 0.5, H * 0.45, 0, W * 0.5, H * 0.45, Math.max(W, H) * 0.5);
+          rg.addColorStop(0, 'rgba(64,94,168,0.30)');
+          rg.addColorStop(0.5, 'rgba(34,52,104,0.12)');
+          rg.addColorStop(1, 'transparent');
+          ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
+        } else {
+          // 亮色模式：保留干净的纯白底，让深色粒子在白底上自然流动（不再画大圆圈）
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.clearRect(0, 0, W, H);
+        }
+        const dirx = P1x - P0x, diry = P1y - P0y, dl = Math.hypot(dirx, diry), dx = dirx / dl, dy = diry / dl, nx = -dy, ny = dx;
+        const bandHalf = Math.min(W, H) * 0.135, breath = 0.7 + 0.3 * Math.sin(t * 0.5), mul = dark ? 1.18 : 1;
+        ctx.globalCompositeOperation = dark ? 'screen' : 'source-over';
+        for (const n of neb) { const nx2 = W * n.x, ny2 = H * n.y, rr = n.r * Math.min(W, H) * 0.7, b = 0.5 + 0.5 * Math.sin(n.ph + t * 0.3); const a = (dark ? 0.12 : 0.18) + (dark ? 0.08 : 0.10) * b; const g = ctx.createRadialGradient(nx2, ny2, 0, nx2, ny2, rr); g.addColorStop(0, 'hsla(' + n.hue.toFixed(0) + ',80%,' + (dark ? 62 : 50) + '%,' + a.toFixed(3) + ')'); g.addColorStop(0.5, 'hsla(' + n.hue.toFixed(0) + ',80%,' + (dark ? 62 : 50) + '%,' + (a * 0.4).toFixed(3) + ')'); g.addColorStop(1, 'hsla(' + n.hue.toFixed(0) + ',80%,' + (dark ? 62 : 50) + '%,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(nx2, ny2, rr, 0, 7); ctx.fill(); }
+        for (const p of river) {
+          const c = center(Math.max(0, Math.min(1, p.u)), W, H), off = p.v * bandHalf, sx = c.x + nx * off, sy = c.y + ny * off, edge = Math.exp(-p.v * p.v * 0.7), tw = 0.5 + 0.5 * Math.sin(p.tw);
+          if (dark) {
+            const tail = (p.sp * 0.5 + p.sz * 0.5) * bandHalf * 0.55, tx = sx - dx * tail, ty = sy - dy * tail, a = p.b * edge * (0.45 + 0.55 * tw) * mul, col = p.warm ? ('hsla(' + p.hue.toFixed(0) + ',90%,72%,') : ('hsla(' + p.hue.toFixed(0) + ',95%,80%,');
+            const grad = ctx.createLinearGradient(tx, ty, sx, sy); grad.addColorStop(0, col + '0)'); grad.addColorStop(1, col + (a * 0.9).toFixed(3) + ')'); ctx.strokeStyle = grad; ctx.lineWidth = Math.max(0.6, p.sz * 0.9); ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(sx, sy); ctx.stroke();
+            ctx.beginPath(); ctx.arc(sx, sy, Math.max(0.5, p.sz), 0, 7); ctx.fillStyle = col + a.toFixed(3) + ')'; ctx.fill();
+          } else {
+            // 亮色模式：更饱和的深色（深蓝/深紫）+ 提亮 alpha，让白底上一眼可见；保留尾迹营造流动感
+            const tail = (p.sp * 0.5 + p.sz * 0.5) * bandHalf * 0.55, tx = sx - dx * tail, ty = sy - dy * tail, a = Math.min(1, p.b * edge * (0.78 + 0.55 * tw)), col = p.warm ? ('hsla(' + p.hue.toFixed(0) + ',90%,38%,') : ('hsla(' + p.hue.toFixed(0) + ',85%,40%,');
+            const grad = ctx.createLinearGradient(tx, ty, sx, sy); grad.addColorStop(0, col + '0)'); grad.addColorStop(1, col + a.toFixed(3) + ')'); ctx.strokeStyle = grad; ctx.lineWidth = Math.max(0.9, p.sz * 1.2); ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(sx, sy); ctx.stroke();
+            ctx.beginPath(); ctx.arc(sx, sy, Math.max(1.0, p.sz * 1.1), 0, 7); ctx.fillStyle = col + a.toFixed(3) + ')'; ctx.fill();
+          }
+        }
+        ctx.globalCompositeOperation = 'source-over';
+        for (const s of stars) { const a = s.base * (0.3 + 0.7 * Math.abs(Math.sin(s.tw))) * breath * mul; ctx.beginPath(); ctx.arc(s.x * W, s.y * H, Math.max(0.3, s.size), 0, 7); ctx.fillStyle = dark ? ('rgba(220,238,255,' + Math.min(1, a).toFixed(3) + ')') : ('rgba(40,80,160,' + Math.min(1, a * 1.4).toFixed(3) + ')'); ctx.fill(); }
+      },
+      sample(n, W, H) {
+        const dirx = P1x - P0x, diry = P1y - P0y, dl = Math.hypot(dirx, diry), dx = dirx / dl, dy = diry / dl, nx = -dy, ny = dx;
+        const bandHalf = Math.min(W, H) * 0.135;
+        const out = []; const stepn = river.length / Math.max(1, n);
+        for (let i = 0; i < n; i++) { const p = river[Math.floor(i * stepn) % river.length]; if (!p) continue; const c = center(Math.max(0, Math.min(1, p.u)), W, H); const off = p.v * bandHalf; out.push({ x: c.x + nx * off, y: c.y + ny * off, hue: p.hue }); }
+        return out;
+      }
+    };
+  }
+
+  const loginGalaxyF = 720;
+  const loginGalaxyGlowCache = {};
+  function loginGalaxyGlow(hue) { const h = ((Math.round(hue / 10) * 10) % 360 + 360) % 360; if (loginGalaxyGlowCache[h]) return loginGalaxyGlowCache[h]; const s = 32, c = document.createElement('canvas'); c.width = c.height = s; const g = c.getContext('2d'); const grad = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2); grad.addColorStop(0, 'hsla(' + h + ',95%,84%,1)'); grad.addColorStop(0.35, 'hsla(' + h + ',92%,68%,0.5)'); grad.addColorStop(1, 'hsla(' + h + ',92%,62%,0)'); g.fillStyle = grad; g.beginPath(); g.arc(s / 2, s / 2, s / 2, 0, 7); g.fill(); loginGalaxyGlowCache[h] = c; return c; }
+  function loginGalaxyClamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  function loginGalaxyEaseInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+  function loginGalaxyBuildTargets(cx, cy, w, h, nOutline, nInner) {
+    const pts = []; const x0 = cx - w / 2 + 8, x1 = cx + w / 2 - 8, y0 = cy - h / 2 + 8, y1 = cy + h / 2 - 8;
+    const seg = [[x0, y0, x1, y0], [x1, y0, x1, y1], [x1, y1, x0, y1], [x0, y1, x0, y0]];
+    let total = 0; seg.forEach(s => total += Math.hypot(s[2] - s[0], s[3] - s[1])); const step = total / nOutline;
+    seg.forEach(s => { const len = Math.hypot(s[2] - s[0], s[3] - s[1]); const c = Math.max(1, Math.floor(len / step)); for (let i = 0; i < c; i++) { const t = i / c; pts.push({ x: s[0] + (s[2] - s[0]) * t, y: s[1] + (s[3] - s[1]) * t }); } });
+    while (pts.length < nOutline) pts.push(pts[pts.length % pts.length]); pts.length = nOutline;
+    for (let r = 1; r <= 2; r++) { const yy = y0 + (y1 - y0) * (r / 3); for (let k = 0; k < nInner; k++) pts.push({ x: x0 + (x1 - x0) * (k + 0.5) / nInner, y: yy }); }
+    return pts;
+  }
+  function startConverge() {
+    if (!fctx || !card) return;
+    const r = card.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2, cw = r.width, ch = r.height;
+    // 粒子密度大幅提高（轮廓 320→860、内部行 18→46），配合更小的单粒尺寸，
+    // 形成"细密粒子云汇聚成窗口"的观感
+    const targets = loginGalaxyBuildTargets(cx, cy, cw, ch, 860, 46);
+    const samples = bg.sample(targets.length, W, H);
+    // 起点更"远"（Z 深度 700-3000px），远→近层次更厚；起点取自背景粒子流采样
+    const parts = targets.map((t, i) => { const s = samples[i] || { x: cx + (Math.random() - 0.5) * W * 0.9, y: cy + (Math.random() - 0.5) * H * 0.9, hue: 208 + Math.random() * 40 }; return { sx: s.x, sy: s.y, sz: 700 + Math.random() * 2300, tx: t.x, ty: t.y, hue: s.hue, px: null, py: null }; });
+    let p = 0, last = performance.now(), done = false; card.style.opacity = 0;
+    function frame(now) {
+      const dt = Math.min(40, now - last); last = now;
+      // 速度适中不快：总时长 1650ms → 2600ms
+      p += dt / 2600; if (p >= 1) { p = 1; done = true; }
+      const fl = loginGalaxyEaseInOut(p), swirl = (1 - fl) * 0.55, ca = Math.cos(swirl), sa = Math.sin(swirl);
+      fctx.clearRect(0, 0, W, H); fctx.globalCompositeOperation = 'lighter';
+      const fade = p > 0.62 ? Math.max(0, 1 - (p - 0.62) / 0.38) : 1;
+      for (const q of parts) {
+        // 「远→近」视觉强化：起点收缩到外圈，引力加速
+        const easeFar = loginGalaxyEaseInOut(Math.max(0, Math.min(1, fl * 1.2)));
+        const ix = q.sx + (q.tx - q.sx) * easeFar, iy = q.sy + (q.ty - q.sy) * easeFar, iz = q.sz * (1 - fl);
+        const dx = ix - cx, dy = iy - cy, dz = iz, rx = dx * ca - dz * sa, rz = dx * sa + dz * ca, scale = loginGalaxyF / (loginGalaxyF + rz);
+        // 粒子尺寸调小：基准 0.8→0.34、缩放系数 1.6→0.72，绘制半径 3.0→1.75 倍
+        const X = cx + rx * scale, Y = cy + dy * scale, sz = 0.34 + 0.72 * scale;
+        const a = 1.0 * (0.4 + 0.6 * loginGalaxyClamp((scale - 0.20) / (1.8 - 0.20), 0, 1)) * fade;
+        if (q.px !== null && fade > 0.05) { fctx.globalAlpha = a * 0.40; fctx.strokeStyle = 'hsla(' + q.hue + ',92%,75%,1)'; fctx.lineWidth = 0.6; fctx.beginPath(); fctx.moveTo(q.px, q.py); fctx.lineTo(X, Y); fctx.stroke(); }
+        fctx.globalAlpha = a; fctx.drawImage(loginGalaxyGlow(q.hue), X - sz * 1.75, Y - sz * 1.75, sz * 3.5, sz * 3.5);
+        q.px = X; q.py = Y;
+      }
+      if (p > 0.52 && p < 0.82) { const fa = Math.max(0, 1 - Math.abs(p - 0.67) / 0.15); fctx.globalAlpha = fa * 0.85; const rg = fctx.createRadialGradient(cx, cy, 0, cx, cy, cw * 0.85); rg.addColorStop(0, 'rgba(180,210,255,1)'); rg.addColorStop(1, 'rgba(180,210,255,0)'); fctx.fillStyle = rg; fctx.beginPath(); fctx.arc(cx, cy, cw * 0.85, 0, 7); fctx.fill(); }
+      fctx.globalAlpha = 1; fctx.globalCompositeOperation = 'source-over';
+      card.style.opacity = loginGalaxyClamp((p - 0.55) / 0.45, 0, 1);
+      if (done) { convRaf = null; return; }
+      convRaf = requestAnimationFrame(frame);
+    }
+    convRaf = requestAnimationFrame(frame);
+  }
+  function stopConverge() { if (convRaf) cancelAnimationFrame(convRaf); convRaf = null; if (fctx) fctx.clearRect(0, 0, W, H); card.style.opacity = ''; }
+
+  function onWheel(e) {
+    if (wheelLock) return;
+    if (e.deltaY > 8) {
+      revealLogin();
+    } else if (e.deltaY < -12 && revealed) {
+      hideLogin();
+    }
+    wheelLock = true;
+    setTimeout(() => wheelLock = false, 120);
+  }
+
+  function onClick(e) {
+    if (!e) return;
+    if (e.target.closest('.login-v3-card') ||
+        e.target.closest('.login-v3-mascot') ||
+        e.target.closest('.qoo-bubble-v2')) return;
+    if (!revealed) revealLogin();
+    else hideLogin();
+  }
+
+  window.addEventListener('wheel', onWheel, { passive: true });
+  window.addEventListener('click', onClick);
+
+  let touchStartY = 0;
+  window.addEventListener('touchstart', e => { touchStartY = e.touches[0].clientY; }, { passive: true });
+  window.addEventListener('touchend', e => {
+    const dy = touchStartY - e.changedTouches[0].clientY;
+    if (dy > 40) revealLogin();
+    else if (dy < -50 && revealed) hideLogin();
+  }, { passive: true });
+
+  if (closeBtn) closeBtn.addEventListener('click', e => { e.stopPropagation(); hideLogin(); });
+
+  // 进入页面 2.2s 后轻微提示可下滑（不改变状态）
+  setTimeout(() => {
+    if (!revealed && page && page.classList) page.classList.add('hint-shown');
+  }, 2200);
+
+  // 清理：页面卸载时停止动画
+  window.addEventListener('beforeunload', () => {
+    if (rafId) cancelAnimationFrame(rafId);
+    if (convRaf) cancelAnimationFrame(convRaf);
+  });
 }
 
 /* 登录页小Qoo：桌面宠物式健康提示 */
 function bindLoginMascot() {
-  const mascot = U.qs('.login-mascot');
-  const bubble = U.qs('.qoo-bubble');
+  const mascot = U.qs('.login-v3-mascot') || U.qs('.login-v3-mascot-img') || U.qs('.login-mascot-v2') || U.qs('.login-mascot');
+  const bubble = U.qs('.qoo-bubble-v2') || U.qs('.qoo-bubble');
   const bubbleText = U.qs('.qoo-bubble-text');
   const closeBtn = U.qs('.qoo-bubble-close');
   if (!mascot || !bubble || !bubbleText) return;
@@ -704,91 +958,228 @@ const WORKFLOW_HASHES = {
 const SARCO_WORKFLOW = [
   { label: '筛查建档', icon: '🔎', hash: '#/sarcopenia' },
   { label: '标准化评估', icon: '🩺', hash: '#/sarcopenia-assess' },
-  { label: '制定方案', icon: '🎯', hash: '#/plan' },
+  /* 修复：原先指向 '#/plan'（体重管理单元路由），点击会跳出肌少症单元导致上下文丢失；
+     现统一指向本单元的 '#/sarcopenia-plan'，与左侧模块导航保持同一 hash。 */
+  { label: '制定方案', icon: '🎯', hash: '#/sarcopenia-plan' },
   { label: '随访看板', icon: '📈', hash: '#/sarcopenia-stats' }
 ];
 const SARCO_WORKFLOW_HASHES = {
   '#/sarcopenia': 0,
   '#/sarcopenia-assess': 1,
-  '#/plan': 2,
+  '#/sarcopenia-plan': 2,
   '#/sarcopenia-stats': 3
 };
 // 属于肌少症专病上下文的路由（命中即切换为专病工作流）
-const SARCO_ROUTES = { '#/sarcopenia': 1, '#/sarcopenia-assess': 1, '#/sarcopenia-stats': 1 };
+const SARCO_ROUTES = { '#/sarcopenia': 1, '#/sarcopenia-assess': 1, '#/sarcopenia-stats': 1, '#/sarcopenia-plan': 1 };
 
-const NAV = [
-  {
-    step: 1, section: '系统功能引导',
-    items: [
-      { hash: '#/guide', icon: '🧭', label: '功能导引' }
+// 模块配置：顶部单元切换器 + 各单元专属左侧导航
+// 每个模块保留原有菜单 hash 与角色守卫键（adminOnly/superOnly/doctorOnly）不变
+const MODULES = {
+  weight: {
+    id: 'weight', name: '体重管理', icon: '⚖️',
+    desc: '体重监测 · 综合评估 · 运动方案',
+    defaultHash: '#/dashboard',
+    nav: [
+      { section: '体重管理工作台', items: [
+        { hash: '#/dashboard', icon: '🏠', label: '体重管理台账' },
+        { hash: '#/assessment', icon: '📊', label: '综合评估' },
+        { hash: '#/muscle', icon: '💪', label: '鹊动肌力评估' },
+        { hash: '#/plan', icon: '🎯', label: '智能方案' },
+        { hash: '#/lifestyle', icon: '🌿', label: '生活方式问卷' }
+      ] }
     ]
   },
-  {
-    step: 2, section: '体重管理',
-    items: [
-      { hash: '#/dashboard', icon: '🏠', label: '体重管理台账' },
-      { hash: '#/assessment', icon: '📊', label: '体重管理评估' },
-      { hash: '#/lifestyle', icon: '🌿', label: '生活方式问卷' },
-      { hash: '#/plan', icon: '🎯', label: '智能方案生成' }
+  sarcopenia: {
+    id: 'sarcopenia', name: '老年肌少症与跌倒风险管理', icon: '🧓',
+    desc: '肌少症筛查 · 跌倒风险评估 · 预防方案',
+    defaultHash: '#/sarcopenia',
+    nav: [
+      { section: '肌少症工作台', items: [
+        { hash: '#/sarcopenia', icon: '🧓', label: '肌少症-跌倒风险台账' },
+        { hash: '#/sarcopenia-assess', icon: '🩺', label: '综合评估' },
+        { hash: '#/muscle', icon: '💪', label: '鹊动肌力评估' },
+        { hash: '#/sarcopenia-plan', icon: '🎯', label: '智能方案' }
+      ] }
     ]
   },
-  {
-    step: 3, section: '肌少症-跌倒风险评估',
-    items: [
-      { hash: '#/sarcopenia', icon: '🧓', label: '肌少症-跌倒风险台账' },
-      { hash: '#/sarcopenia-assess', icon: '🩺', label: '肌少症-跌倒风险评估' }
+  spine: {
+    id: 'spine', name: '青少年脊柱健康管理', icon: '🦴',
+    desc: '首诊登记 · 功能评估 · 风险分层 · 干预方案',
+    defaultHash: '#/spine',
+    nav: [
+      { section: '青少年脊柱健康工作台', items: [
+        { hash: '#/spine', icon: '🦴', label: '脊柱健康管理台账' },
+        { hash: '#/spine-assess', icon: '🩺', label: '综合评估' },
+        { hash: '#/muscle', icon: '💪', label: '鹊动肌力评估' },
+        { hash: '#/spine-plan', icon: '🎯', label: '智能方案' }
+      ] }
     ]
-  },
-  {
-    step: 4, section: '肌力评估',
-    items: [
-      { hash: '#/isokinetic', icon: '⚙️', label: '等速肌力评估' },
-      { hash: '#/isotonic', icon: '🏋️', label: '等张肌力评估' }
-    ]
-  },
-  {
-    step: 5, section: '报告中心',
-    items: [
-      { hash: '#/report', icon: '📑', label: '报告管理中心' },
-      { hash: '#/isokinetic-report', icon: '⚙️', label: '等速报告解读' },
-      { hash: '#/isotonic-report', icon: '🏋️', label: '等张报告解读' }
-    ]
-  },
-  {
-    step: 6, section: '数据看板中心',
-    items: [
-      { hash: '#/bigdata', icon: '🚀', label: '大数据看板' }
-    ]
-  },
-  {
-    step: 7, section: '设备与方案库',
-    items: [
-      { hash: '#/devices', icon: '🔧', label: '鹊动设备档案' },
-      { hash: '#/action-library', icon: '🃏', label: '运动方案库管理', adminOnly: true }
-    ]
-  },
-  {
-    step: 8, section: '资讯与消息',
-    items: [
-      { hash: '#/info-center', icon: '📚', label: '资讯中心', doctorOnly: true },
-      { hash: '#/msg-center', icon: '💬', label: '系统消息', doctorOnly: true },
-      { hash: '#/info-admin', icon: '📰', label: '资讯管理', adminOnly: true },
-      { hash: '#/msg-admin', icon: '🔔', label: '消息管理', adminOnly: true },
-      { hash: '#/info-groups', icon: '👥', label: '接收人分组', adminOnly: true }
-    ]
-  },
-  {
-    section: '系统设置',
-    items: [
-      { hash: '#/admin', icon: '⚡', label: '系统管理后台', adminOnly: true },
-      { hash: '#/accounts', icon: '👑', label: '账号管理', superOnly: true },
-      { hash: '#/errlog', icon: '🛡️', label: '系统运维中心', superOnly: true },
-      { hash: '#/ops', icon: '🛠️', label: '运维管理工作台', adminOnly: true },
-      { hash: '#/ops-correct', icon: '✏️', label: '数据纠错台', adminOnly: true },
-      { hash: '#/ops-switch', icon: '🎛️', label: '运维开关台', adminOnly: true }
-    ]
-  },
-];
+  }
+};
+// 兼容旧引用：默认取体重管理单元导航
+const NAV = MODULES.weight.nav;
+
+// 模块专属路由 → 所属单元（共享路由不登记，保持当前工作上下文）
+const MODULE_ROUTE_OWNER = {
+  '#/dashboard':'weight','#/assessment':'weight','#/lifestyle':'weight',
+  '#/sarcopenia':'sarcopenia','#/sarcopenia-assess':'sarcopenia','#/sarcopenia-stats':'sarcopenia','#/fall-risk-stats':'sarcopenia','#/sarcopenia-plan':'sarcopenia',
+  '#/spine':'spine','#/spine-assess':'spine','#/spine-plan':'spine'
+};
+function routeModuleForHash(hash){ return MODULE_ROUTE_OWNER[hash] || null; }
+
+// 独立全屏模块（无单元导航，从 Portal 进入）：这些路由隐藏左侧导航
+const STANDALONE_ROUTES = {
+  '#/bigdata': 1, '#/admin': 1, '#/accounts': 1, '#/ops': 1,
+  '#/ops-correct': 1, '#/ops-switch': 1, '#/errlog': 1,
+  '#/info-admin': 1, '#/msg-admin': 1, '#/info-groups': 1, '#/action-library': 1,
+  '#/assets': 1  // 鹊动设备档案库：全屏独立页，不显示左侧导航
+};
+
+// 读取当前选中单元（持久化到 localStorage）
+function currentModuleId() {
+  const saved = (typeof localStorage !== 'undefined') && localStorage.getItem('qd_module');
+  return (saved && MODULES[saved]) ? saved : 'weight';
+}
+function currentModuleNav() { return MODULES[currentModuleId()].nav; }
+
+// 唯一改动点：切换当前模块（写存储 + 重渲染切换器 + 重渲染侧栏）
+function setModule(id, opts) {
+  opts = opts || {};
+  if (!MODULES[id]) return;
+  const changed = id !== currentModuleId();
+  if (typeof localStorage !== 'undefined') localStorage.setItem('qd_module', id);
+  AppState.module = id;
+  if (changed) { renderSidebarNav(); renderModuleSwitch(); }
+  if (opts.navigate) location.hash = MODULES[id].defaultHash;
+}
+window.setModule = setModule;
+
+// 按当前模块渲染左侧导航（角色过滤 + 模块专属分组 + 当前路由高亮）
+function renderSidebarNav() {
+  const nav = U.qs('#sidebar-nav');
+  if (!nav) return;
+  const role = (AppState.currentUser && AppState.currentUser.role) || 'doctor';
+  const curHash = location.hash;
+  // 不再在侧边导航露出「🧩 模块选择」入口（登录后直接进 #/portal；侧栏只保留单元内功能）
+  nav.innerHTML = currentModuleNav().map(sec => {
+    const items = sec.items.filter(i => (!i.adminOnly || isAdminRole(role)) && (!i.superOnly || isSuperRole(role)) && (!i.doctorOnly || role === 'doctor'));
+    if (!items.length) return '';
+    return `<div class="nav-section"><span class="nav-section-title">${sec.section}</span></div>` + items.map(i =>
+      `<a class="nav-item${i.hash === curHash ? ' active' : ''}" href="${i.hash}"><span class="nav-icon">${i.icon}</span><span class="nav-text"><span class="nav-label">${i.label}</span>${i.hint ? `<span class="nav-hint">${i.hint}</span>` : ''}</span></a>`).join('');
+  }).join('');
+}
+
+// 切换器显示数据
+function moduleRealmDisplay() {
+  return Object.keys(MODULES).map(id => {
+    const m = MODULES[id];
+    const short = id === 'sarcopenia' ? '肌少症·跌倒' : id === 'spine' ? '脊柱健康' : '体重管理';
+    return Object.assign({}, m, { id, short });
+  });
+}
+
+// 11 款切换器样式 builder
+function moduleSwitchHTML(style, cur) {
+  const realms = moduleRealmDisplay();
+  const tabAttr = (r) => `role="tab" data-module="${r.id}" aria-selected="${r.id===cur}" title="${r.name}" tabindex="${r.id===cur?'0':'-1'}"`;
+  const soon = (r) => r.reserved ? '<span class="ms-soon">即将上线</span>' : '';
+  switch (style) {
+    case 'pill':
+      return `<div class="ms-pill" role="tablist" aria-label="业务单元"><div class="ms-knob" aria-hidden="true"></div>` +
+        realms.map(r => `<button class="ms-seg ${r.id===cur?'active':''}" ${tabAttr(r)}><span class="ms-ico">${r.icon}</span><span>${r.short}</span></button>`).join('') + `</div>`;
+    case 'underline':
+      return `<div class="ms-tabs" role="tablist" aria-label="业务单元">` +
+        realms.map(r => `<button class="ms-tab ${r.id===cur?'active':''}" ${tabAttr(r)}><span class="ms-ico">${r.icon}</span><span>${r.name}</span></button>`).join('') +
+        `<div class="ms-underline" aria-hidden="true"></div></div>`;
+    case 'dock':
+      return `<div class="ms-dock" role="tablist" aria-label="业务单元">` +
+        realms.map(r => `<button class="ms-isle ${r.id===cur?'active':''} ${r.reserved?'reserved':''}" ${tabAttr(r)}><span class="ms-bubble">${r.icon}</span><span class="ms-ilabel">${r.short}</span>${soon(r)}</button>`).join('') + `</div>`;
+    case 'ribbon':
+      return `<div class="ms-ribbon" role="tablist" aria-label="业务单元"><div class="ms-rline" aria-hidden="true"></div><div class="ms-rnodes">` +
+        realms.map(r => `<button class="ms-rnode ${r.id===cur?'active':''} ${r.reserved?'reserved':''}" ${tabAttr(r)}><span class="ms-rdot">${r.icon}</span><span class="ms-rlabel">${r.short}</span></button>`).join('') +
+        `</div></div>`;
+    case 'slider':
+      return `<div class="ms-rail" role="tablist" aria-label="业务单元"><div class="ms-track" aria-hidden="true"></div><div class="ms-block" aria-hidden="true">${MODULES[cur].icon} ${MODULES[cur].short||cur}</div><div class="ms-rlabels">` +
+        realms.map(r => `<button class="ms-rlabel ${r.id===cur?'active':''}" ${tabAttr(r)}>${r.short}</button>`).join('') + `</div></div>`;
+    case 'cube': {
+      const i = realms.findIndex(r => r.id === cur);
+      const rot = i === 0 ? 'rotateY(0deg)' : i === 1 ? 'rotateY(-90deg)' : 'rotateY(90deg)';
+      const faces = [{r:realms[0],f:'ms-f-front',a:i===0},{r:realms[1],f:'ms-f-right',a:i===1},{r:realms[2],f:'ms-f-left',a:i===2}];
+      return `<div class="ms-cube-wrap" role="tablist" aria-label="业务单元"><div class="ms-cube-tilt"><div class="ms-cube" style="transform:${rot}">` +
+        faces.map(f => `<div class="ms-face ${f.f} ${f.a?'is-active':''}" ${tabAttr(f.r)}><span class="ms-cico">${f.r.icon}</span><span class="ms-cnm">${f.r.short}</span></div>`).join('') +
+        `</div></div><div class="ms-cube-dots">${realms.map((r,idx)=>`<button class="ms-cdot ${idx===i?'on':''}" ${tabAttr(r)}>${r.icon}</button>`).join('')}</div></div>`;
+    }
+    case 'flip':
+      return `<div class="ms-flips" role="tablist" aria-label="业务单元">` +
+        realms.map(r => `<button class="ms-flip ${r.id===cur?'on':''}" ${tabAttr(r)}><div class="ms-flip-inner"><div class="ms-flip-face ms-flip-front"><span class="ms-ico">${r.icon}</span><span class="ms-fnm">${r.short}</span></div><div class="ms-flip-face ms-flip-back"><span class="ms-ico">${r.icon}</span><span class="ms-fnm">${r.short}</span></div></div></button>`).join('') + `</div>`;
+    case 'glass': {
+      const i = realms.findIndex(r => r.id === cur);
+      return `<div class="ms-glass-scene"><div class="ms-glass-row" role="tablist" aria-label="业务单元">` +
+        realms.map((r,idx)=>`<button class="ms-slab ${r.id===cur?'active':''} ${idx<i?'is-left':'is-right'}" ${tabAttr(r)}><span class="ms-ico">${r.icon}</span><span class="ms-gnm">${r.short}</span></button>`).join('') + `</div></div>`;
+    }
+    case 'steps':
+      return `<div class="ms-steps" role="tablist" aria-label="业务单元">` +
+        realms.map(r => `<button class="ms-step ${r.id===cur?'active':''}" ${tabAttr(r)}><div class="ms-step-top"><span class="ms-ico">${r.icon}</span><span class="ms-stnm">${r.short}</span></div><div class="ms-step-shadow"></div></button>`).join('') + `</div>`;
+    case 'coverflow': {
+      const i = realms.findIndex(r => r.id === cur);
+      return `<div class="ms-cov" role="tablist" aria-label="业务单元">` +
+        realms.map((r,idx)=>{ const cls = idx===i?'active':(idx<i?'is-left':'is-right');
+          return `<button class="ms-cov-card ${cls}" ${tabAttr(r)}><span class="ms-ico">${r.icon}</span><span class="ms-cvnm">${r.short}</span></button>`; }).join('') + `</div>`;
+    }
+    case 'card':
+    default:
+      return `<div class="ms-cards" role="tablist" aria-label="业务单元">` +
+        realms.map(r => `<button class="ms-card ${r.id===cur?'active':''} ${r.reserved?'reserved':''}" ${tabAttr(r)}><span class="ms-card-ico">${r.icon}</span><span class="ms-card-name">${r.name}</span><span class="ms-card-desc">${r.desc||''}</span>${soon(r)}</button>`).join('') + `</div>`;
+  }
+}
+
+// 渲染顶部单元切换器（按 Skin.state.switcherStyle 分派）
+function renderModuleSwitch() {
+  const bar = U.qs('#module-switch');
+  if (!bar) return;
+  const cur = currentModuleId();
+  const style = (window.Skin && Skin.state && Skin.state.switcherStyle) || 'card';
+  bar.innerHTML = moduleSwitchHTML(style, cur);
+  bar.setAttribute('data-ms-style', style);
+  // 滑动指示器定位
+  positionSwitcherIndicator(style);
+  // 绑定点击 + 键盘：共享路由（肌力评估/报告中心/设备/资讯/设置等）点击只换左栏，不跳转
+  const isSharedRoute = !routeModuleForHash(location.hash || '#/dashboard');
+  bar.querySelectorAll('[data-module]').forEach(el => {
+    el.onclick = () => setModule(el.getAttribute('data-module'), { navigate: !isSharedRoute });
+    el.onkeydown = (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setModule(el.getAttribute('data-module'), { navigate: !isSharedRoute }); }
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const ids = Object.keys(MODULES);
+        const idx = ids.indexOf(currentModuleId());
+        const next = e.key === 'ArrowRight' ? ids[(idx+1)%ids.length] : ids[(idx+ids.length-1)%ids.length];
+        setModule(next, { navigate: !isSharedRoute });
+      }
+    };
+  });
+}
+window.__rerenderModuleSwitch = function () { renderModuleSwitch(); };
+
+// 滑动指示器定位（pill/underline/slider/cube）
+function positionSwitcherIndicator(style) {
+  const bar = U.qs('#module-switch');
+  if (!bar) return;
+  const ids = Object.keys(MODULES);
+  const idx = ids.indexOf(currentModuleId());
+  if (style === 'pill') {
+    const knob = bar.querySelector('.ms-knob');
+    if (knob) knob.style.transform = `translateX(${idx*100}%)`;
+  } else if (style === 'underline') {
+    const tab = bar.querySelectorAll('.ms-tab')[idx];
+    const ul = bar.querySelector('.ms-underline');
+    if (tab && ul) { ul.style.left = tab.offsetLeft + 'px'; ul.style.width = tab.offsetWidth + 'px'; }
+  } else if (style === 'slider') {
+    const block = bar.querySelector('.ms-block');
+    if (block) block.style.transform = `translateX(${idx*100}%)`;
+  }
+}
+
 
 // 当前工作流：在肌少症专病路由上切换为专病独立工作流，否则为通用流程
 function currentWorkflow() {
@@ -848,22 +1239,17 @@ async function bootApp() {
   app.innerHTML = '';
   app.appendChild(document.importNode(U.qs('#tpl-app-shell').content, true));
 
-  // 应用自定义 Logo
+  // 应用自定义 Logo（登录页 3D logo 固定使用 images/logo-fac-transparent.png，不参与替换）
   const logoUrl = AppState.config.logoUrl || 'images/logo.png';
-  const loginImg = document.querySelector('#tpl-login img');
   const brandImg = U.qs('.sidebar-brand img');
-  if (loginImg) loginImg.src = logoUrl;
   if (brandImg) brandImg.src = logoUrl;
 
-  // 侧边栏（按工作流阶段分组的菜单）
-  const nav = U.qs('#sidebar-nav');
-  nav.innerHTML = NAV.map(sec => {
-    const items = sec.items.filter(i => (!i.adminOnly || isAdminRole(AppState.currentUser.role)) && (!i.superOnly || isSuperRole(AppState.currentUser.role)) && (!i.doctorOnly || AppState.currentUser.role === 'doctor'));
-    if (!items.length) return '';
-    const step = sec.step ? `<span class="nav-step">${sec.step}</span>` : '';
-    return `<div class="nav-section">${step}<span class="nav-section-title">${sec.section}</span></div>` + items.map(i =>
-      `<a class="nav-item" href="${i.hash}"><span class="nav-icon">${i.icon}</span><span class="nav-text"><span class="nav-label">${i.label}</span>${i.hint ? `<span class="nav-hint">${i.hint}</span>` : ''}</span></a>`).join('');
-  }).join('');
+  // 当前模块（持久化）
+  AppState.module = currentModuleId();
+  // 顶部单元切换器
+  renderModuleSwitch();
+  // 侧边栏（按当前模块分组渲染菜单）
+  renderSidebarNav();
 
   U.qs('#current-user-name').textContent =
     `${AppState.currentUser.displayName}（${AppState.currentUser.role === 'superadmin' ? '超级管理员' : AppState.currentUser.role === 'admin' ? '管理员' : '医生'}）`;
@@ -881,12 +1267,24 @@ async function bootApp() {
     title: '退出登录', heading: '确认退出当前账号？', okText: '退出登录'
   });
   U.qs('#mobile-menu-btn').onclick = () => U.qs('#sidebar').classList.toggle('open');
+  // 顶部返回条：返回上一层 / 返回主页
+  const btnBack = U.qs('#btn-back'); if (btnBack) btnBack.onclick = () => {
+    if (window.history.length > 1) history.back();
+    else location.hash = (AppState.module && MODULES[AppState.module]) ? MODULES[AppState.module].defaultHash : '#/home';
+  };
+  const btnHome = U.qs('#btn-home'); if (btnHome) btnHome.onclick = () => { location.hash = '#/portal'; };
+  // Portal 键盘左右切换模块
+  document.addEventListener('keydown', (e) => {
+    if (!document.querySelector('.app-shell.portal-view')) return;
+    if (e.key === 'ArrowLeft' && window.__portalNav) window.__portalNav.prev();
+    if (e.key === 'ArrowRight' && window.__portalNav) window.__portalNav.next();
+  });
 
   await loadDoctorPatients();
   resetIdleTimer();
   window.addEventListener('hashchange', route);
   U.setupTableObserver();
-  if (!location.hash || location.hash === '#/') location.hash = '#/dashboard';
+  if (!location.hash || location.hash === '#/') location.hash = '#/portal';
   else route();
 }
 
@@ -952,14 +1350,104 @@ function snapshotData() {
 window.persistPatient = persistPatient;
 window.snapshotData = snapshotData;
 
+/* ==================== 导航合并：标签页融合 Hub ==================== */
+// 通用 tab 聚合页：tabs=[{hash,label,render,role}]，按角色显隐，点击/Hash 切换 tab
+Pages.tabHub = async function (tabs, opts) {
+  opts = opts || {};
+  const role = (AppState.currentUser && AppState.currentUser.role) || 'doctor';
+  const visible = tabs.filter(t => (!t.adminOnly || isAdminRole(role)) && (!t.superOnly || isSuperRole(role)) && (!t.doctorOnly || role === 'doctor'));
+  if (!visible.length) return '<div class="alert alert-warning"><strong>暂无可见模块</strong><p style="margin:6px 0 0;font-size:13px;">当前账号角色无权访问任何子模块。</p></div>';
+  // 当前 tab：优先 location.hash 匹配，否则第一个
+  let cur = visible.find(t => t.hash === location.hash) || visible[0];
+
+  const wrap = document.createElement('div');
+  wrap.className = 'hub-wrap';
+  const tabsEl = document.createElement('div');
+  tabsEl.className = 'hub-tabs';
+  tabsEl.setAttribute('role', 'tablist');
+  const bodyEl = document.createElement('div');
+  bodyEl.className = 'hub-body';
+  bodyEl.id = 'hub-body';
+  wrap.appendChild(tabsEl);
+  wrap.appendChild(bodyEl);
+
+  async function mount(tab) {
+    U.qsa('.hub-tab', tabsEl).forEach(a => a.classList.toggle('active', a.dataset.tab === tab.hash));
+    bodyEl.innerHTML = '';
+    try {
+      const maybePromise = (typeof tab.render === 'function') ? tab.render() : '';
+      let body = (maybePromise && typeof maybePromise.then === 'function') ? await maybePromise : maybePromise;
+      if (body instanceof Node) bodyEl.appendChild(body);
+      else bodyEl.innerHTML = body || '';
+    }
+    catch (e) { bodyEl.innerHTML = '<div class="alert alert-danger">子模块渲染异常：' + U.esc(e.message) + '</div>'; }
+  }
+
+  visible.forEach(t => {
+    const a = document.createElement('a');
+    a.className = 'hub-tab' + (t.hash === cur.hash ? ' active' : '');
+    a.href = t.hash;
+    a.dataset.tab = t.hash;
+    a.textContent = t.label;
+    a.onclick = (e) => {
+      e.preventDefault();
+      // 仅更新 URL 不触发 route() 整页重渲染，再局部挂载 tab 内容
+      if (history.replaceState) history.replaceState(null, '', t.hash);
+      mount(t);
+    };
+    tabsEl.appendChild(a);
+  });
+
+  await mount(cur);
+  return wrap;
+};
+// 鹊动肌力评估：等速 + 等张（仅两个入口，去掉旧的独立入口）
+Pages.muscleHub = function () {
+  return Pages.tabHub([
+    { hash: '#/muscle', label: '等速肌力评估', render: () => Pages.isokinetic() },
+    { hash: '#/isotonic', label: '等张肌力评估', render: () => Pages.isotonic() }
+  ]);
+};
+// 鹊动设备档案库：按方案要求只保留设备档案编辑页面本体，
+// 不再套 tabHub（去掉「运动方案库管理」跳转按钮与页面），左侧导航亦不显示。
+// 运动方案库管理仍可从 Portal 首页「动作库」卡片单独进入。
+Pages.assetsHub = function () { return Pages.devices(); };
+// 资讯中心：按角色聚合资讯/消息/管理
+Pages.infoHub = function () {
+  return Pages.tabHub([
+    { hash: '#/info', label: '资讯中心', render: () => Pages.infoCenter(), doctorOnly: true },
+    { hash: '#/msg-center', label: '系统消息', render: () => Pages.msgCenter(), doctorOnly: true },
+    { hash: '#/info-admin', label: '资讯管理', render: () => Pages.infoAdmin(), adminOnly: true },
+    { hash: '#/msg-admin', label: '消息管理', render: () => Pages.msgAdmin(), adminOnly: true },
+    { hash: '#/info-groups', label: '接收人分组', render: () => Pages.infoGroups(), adminOnly: true }
+  ]);
+};
+// 运维管理中心：聚合 errLog + 运维台/纠错/开关（全部仅超管）
+Pages.opsHub = function () {
+  return Pages.tabHub([
+    { hash: '#/errlog', label: '系统运维中心', render: () => Pages.errLog() },
+    { hash: '#/ops', label: '运维工作台', render: () => Pages.ops() },
+    { hash: '#/ops-correct', label: '数据纠错台', render: () => (Pages.opsCorrect ? Pages.opsCorrect() : '<div class="alert alert-warning">数据纠错台模块未加载</div>') },
+    { hash: '#/ops-switch', label: '运维开关台', render: () => (Pages.opsSwitch ? Pages.opsSwitch() : '<div class="alert alert-warning">运维开关台模块未加载</div>') }
+  ]);
+};
+
 /* ==================== SPA 路由 ==================== */
 const ROUTES = {
+  '#/home': { title: '模块选择', render: () => renderPortal() },
   '#/dashboard': { title: '体重管理台账', render: () => Pages.dashboard() },
+  '#/portal': { title: '模块选择', render: () => renderPortal() },
   '#/guide': { title: '功能导引', render: () => Pages.guide() },
+  // —— 第三大单元：青少年脊柱健康管理（AIS 特发性脊柱侧弯）独立模块 ——
+  '#/spine-coming': { title: '青少年脊柱健康管理', render: () => Pages.spineComing() },
+  '#/spine': { title: '青少年脊柱健康台账', render: () => Pages.spine() },
+  '#/spine-assess': { title: '青少年脊柱健康评估', render: () => Pages.spineAssess() },
+  '#/spine-plan': { title: '青少年脊柱健康干预方案', render: () => Pages.spinePlan() },
   '#/patient': { title: '患者首诊登记', render: () => Pages.patient() },
   '#/assessment': { title: '体重管理评估', render: () => Pages.assessment() },
   '#/lifestyle': { title: '生活方式问卷评估', render: () => Pages.lifestyle() },
   '#/plan': { title: '智能营养与运动方案', render: () => Pages.plan() },
+  '#/sarcopenia-plan': { title: '肌少症综合干预方案', render: () => Pages.sarcopeniaPlan() },
   '#/isokinetic': { title: '等速肌力评估', render: () => Pages.isokinetic() },
   '#/isotonic': { title: '等张肌力评估', render: () => Pages.isotonic() },
   // —— 肌力评估独立报告解读（跨人群共享，可脱离主线单独查看）——
@@ -967,15 +1455,16 @@ const ROUTES = {
   '#/isotonic-report': { title: '等张肌力报告解读', render: () => (Pages.isotonicReport ? Pages.isotonicReport() : '<div class="alert alert-warning">等张报告模块未加载</div>') },
   '#/devices': { title: '鹊动设备档案', render: () => Pages.devices() },
   '#/report': { title: '报告管理中心', render: () => Pages.report() },
+  '#/report-center': { title: '报告管理中心', render: () => Pages.reportCenter() },
   '#/center': { title: '医生报告中心', render: () => Pages.center() },
   '#/bigdata': { title: '体重管理看板', render: () => Pages.bigdata() },
   '#/styleguide': { title: '设计系统', render: () => Pages.styleguide() },
   '#/admin': { title: '系统管理后台', render: () => Pages.admin(), adminOnly: true },
   '#/accounts': { title: '账号管理', render: () => Pages.accounts(), superOnly: true },
-  '#/errlog': { title: '系统运维中心', render: () => Pages.errLog(), superOnly: true },
-  '#/ops': { title: '运维管理工作台', render: () => Pages.ops(), adminOnly: true },
-  '#/ops-correct': { title: '数据纠错台', render: () => (Pages.opsCorrect ? Pages.opsCorrect() : '<div class="alert alert-warning">数据纠错台模块未加载</div>'), adminOnly: true },
-  '#/ops-switch': { title: '运维开关台', render: () => (Pages.opsSwitch ? Pages.opsSwitch() : '<div class="alert alert-warning">运维开关台模块未加载</div>'), adminOnly: true },
+  '#/errlog': { title: '运维管理中心', render: () => Pages.opsHub(), superOnly: true },
+  '#/ops': { title: '运维管理工作台', render: () => Pages.ops(), superOnly: true },
+  '#/ops-correct': { title: '数据纠错台', render: () => (Pages.opsCorrect ? Pages.opsCorrect() : '<div class="alert alert-warning">数据纠错台模块未加载</div>'), superOnly: true },
+  '#/ops-switch': { title: '运维开关台', render: () => (Pages.opsSwitch ? Pages.opsSwitch() : '<div class="alert alert-warning">运维开关台模块未加载</div>'), superOnly: true },
   '#/action-library': { title: '运动方案库管理中心', render: () => Pages.actionLibrary(), adminOnly: true },
   // —— 平行独立核心模块：老年人体重与肌少症管理（独立菜单 / 独立业务数据 / 独立报告 / 独立干预台账）——
   '#/sarcopenia': { title: '肌少症-跌倒风险台账', render: () => Pages.sarcopenia() },
@@ -988,7 +1477,11 @@ const ROUTES = {
   '#/msg-admin': { title: '系统消息管理', render: () => Pages.msgAdmin(), adminOnly: true },
   '#/info-groups': { title: '医生分组与接收人', render: () => Pages.infoGroups(), adminOnly: true },
   '#/info-center': { title: '资讯中心', render: () => Pages.infoCenter(), doctorOnly: true },
-  '#/msg-center': { title: '系统消息中心', render: () => Pages.msgCenter(), doctorOnly: true }
+  '#/msg-center': { title: '系统消息中心', render: () => Pages.msgCenter(), doctorOnly: true },
+  // —— 导航合并：融合入口（标签页聚合原 Pages，旧路由保留可深链）——
+  '#/muscle': { title: '鹊动肌力评估', render: () => Pages.muscleHub() },
+  '#/assets': { title: '鹊动设备档案库', render: () => Pages.devices() },
+  '#/info': { title: '资讯中心', render: () => Pages.infoHub() }
 };
 
 // 功能导引页：把"系统能做什么"内置进系统，降低培训成本
@@ -1085,11 +1578,59 @@ Pages.guide = function () {
   return html;
 };
 
+// 青少年脊柱健康管理（预留模块占位页）：沿用同一套框架，后续独立开发，不重构导航
+Pages.spineComing = function () {
+  var cards = Object.keys(MODULES).map(function (id) {
+    var m = MODULES[id];
+    var tag = m.reserved ? '<span class="badge badge-soon">即将上线</span>' : '<span class="badge badge-live">已上线</span>';
+    return '<div class="guide-card' + (m.reserved ? ' guide-card-soon' : ' guide-card-accent') + '">' +
+      '<div class="guide-card-title">' + m.icon + ' ' + m.name + ' ' + tag + '</div>' +
+      '<div class="guide-card-desc">' + m.desc + '</div></div>';
+  }).join('');
+  return '<div class="page-guide">' +
+    '<div class="guide-hero"><h2>🦴 青少年脊柱健康管理</h2>' +
+    '<p>本单元为<strong>预留模块</strong>，将在体重管理、老年肌少症与跌倒风险管理之后独立开发。' +
+    '正式上线后将复用现有「顶部单元切换 + 专属导航 + 工作流步进」框架，<b>无需重构导航结构</b>，切到本单元即可见脊柱健康专属步骤。</p></div>' +
+    '<div class="guide-group"><h3>🧩 当前已规划单元</h3><div class="guide-cards">' + cards + '</div></div>' +
+    '<div class="guide-foot">顶部切换器点 <b>老年肌少症与跌倒风险管理</b> 即可体验完整单元式导航。</div>' +
+  '</div>';
+};
+
 function route() {
-  const hash = location.hash || '#/dashboard';
-  const r = ROUTES[hash];
+  const hash = location.hash || '#/home';
+  // 路由别名归一化：重复入口统一重定向到主路由（保留书签/调用方兼容，避免双报告中心/双设备档案/双资讯入口）
+  const ROUTE_ALIASES = { '#/center': '#/report', '#/assets': '#/devices', '#/info-center': '#/info' };
+  if (ROUTE_ALIASES[hash]) { location.hash = ROUTE_ALIASES[hash]; return; }
   const main = U.qs('#main-content');
   if (!main) return;
+
+  // —— 新架构：Portal / 单元 / 独立页 三种视图模式 ——
+  const isPortal = hash === '#/portal' || hash === '#/home';
+  const isStandalone = !!STANDALONE_ROUTES[hash];
+  const shell = U.qs('.app-shell');
+  if (shell) {
+    shell.classList.toggle('portal-view', isPortal);
+    shell.classList.toggle('standalone-view', isStandalone && !isPortal);
+  }
+  const sidebar = U.qs('#sidebar'); if (sidebar) sidebar.classList.toggle('hidden', isPortal || isStandalone);
+  const topbar = U.qs('.topbar'); if (topbar) topbar.classList.toggle('hidden', isPortal);
+  const retBar = U.qs('#return-bar'); if (retBar) retBar.classList.toggle('hidden', isPortal);
+  const modSwitch = U.qs('#module-switch'); if (modSwitch) modSwitch.classList.add('hidden');
+  // 顶部返回条：显示当前单元标识（以 AppState.module 为准，避免共享页翻转单元）
+  // 关键约束：顶部表头只显示当前页面名 r.title，不再重复显示 mod.name（避免"单元名+页面名"重复）
+  const unitLabel = U.qs('#current-unit-label');
+  if (unitLabel) {
+    unitLabel.textContent = '';
+    unitLabel.style.display = 'none';
+  }
+  if (isPortal) { renderPortal(); return; }
+
+  const r = ROUTES[hash];
+
+  // 路由派生模块（单一真相）：模块专属路由自动同步当前单元 → 重渲染切换器/侧栏；共享路由保持当前上下文
+  const owner = routeModuleForHash(hash);
+  if (owner && owner !== currentModuleId()) setModule(owner);
+  else renderSidebarNav(); // 共享路由：仅刷新当前路由高亮
 
   U.qsa('.nav-item').forEach(a => a.classList.toggle('active', a.getAttribute('href') === hash));
   U.qs('#sidebar')?.classList.remove('open');
@@ -1138,6 +1679,129 @@ function route() {
   });
 }
 window.route = route;
+
+/* ==================== Portal 首页（登录后模块选择） ==================== */
+function renderPortal() {
+  const u = AppState.currentUser || {};
+  const role = u.role || 'doctor';
+  const roleText = role === 'superadmin' ? '超级管理员' : role === 'admin' ? '管理员' : '医生';
+  // 卡片主色统一走皮肤主题令牌（--primary/--info/--success/--warning/--danger），
+  // 这样切换皮肤科库主题时 Portal 配色自动随之变化，不再使用硬编码色值
+  const cards = [
+    { id: 'sarcopenia', title: '老年肌少症<br>跌倒风险管理', icon: '🧓', color: 'var(--primary)', desc: '肌少症筛查 · 跌倒风险评估 · 预防方案' },
+    { id: 'weight', title: '体重管理', icon: '⚖️', color: 'var(--warning)', desc: '体重监测 · 综合评估 · 运动方案' },
+    { id: 'spine', title: '青少年脊柱健康管理', icon: '🦴', color: 'var(--info)', desc: '首诊登记 · 功能评估 · 风险分层 · 方案' },
+    { id: 'devices', title: '鹊动设备<br>档案管理', icon: '🏋️', color: 'var(--secondary, var(--primary))', desc: '设备档案 · 编辑 · 维护', hash: '#/devices' },
+    { id: 'actionlib', title: '动作库', icon: '🤸', color: 'var(--success)', desc: '运动方案 · 动作管理', hash: '#/action-library', adminOnly: true },
+    { id: 'bigdata', title: '大数据看板', icon: '🚀', color: 'var(--info)', desc: '三大方向人群分布与趋势', hash: '#/bigdata' },
+    { id: 'settings', title: '系统设置', icon: '⚙️', color: 'var(--warning)', desc: '账号 · 配置 · 权限', hash: '#/admin', adminOnly: true },
+    { id: 'report-center', title: '报告管理中心', icon: '📑', color: 'var(--primary)', desc: '三单元报告 · 检索 · 预览 · 导出打印', hash: '#/report-center' },
+    { id: 'ops', title: '运维中心', icon: '🛡️', color: 'var(--danger)', desc: '运维台 · 纠错 · 开关', hash: '#/ops', superOnly: true }
+  ];
+  const visible = cards.filter(c => (!c.adminOnly || isAdminRole(role)) && (!c.superOnly || isSuperRole(role)));
+  const main = U.qs('#main-content');
+  if (!main) return;
+  let active = 0;
+  const len = visible.length;
+  function shortestOff(i, a) {
+    let off = i - a;
+    if (off > len / 2) off -= len;
+    if (off < -len / 2) off += len;
+    return off;
+  }
+  // 卡片内部为上下结构：上=模块名（+引导语），下=模块图标，右下=半透明吉祥物小 Qoo
+  function cardHTML(c, i) {
+    return '<button class="portal-card pg-card' + (i === active ? ' is-active' : '') + '" data-i="' + i + '" data-off="' + shortestOff(i, active) + '" style="--pc:' + c.color + '">'
+      + '<span class="pc-edge"></span>'
+      + '<span class="pg-bloom" aria-hidden="true"></span>'
+      + '<span class="pg-shine"></span>'
+      + '<span class="pg-top"><span class="pg-name">' + c.title + '</span><span class="pg-desc">' + (c.desc || '') + '</span></span>'
+      + '<span class="pg-icon">' + c.icon + '</span>'
+      + '<img class="pc-qoo" src="assets/qoo.png" alt="" aria-hidden="true" loading="lazy">'
+      + '</button>';
+  }
+  main.innerHTML = '<div class="portal preload portal-game portal-v2">'
+    /* 3D 流动粒子背景已移除（用户 8/18 要求） */
+    + '<div class="portal-topbar">'
+    +   '<button class="portal-top-btn" id="portal-theme" title="切换明暗主题" aria-label="切换明暗主题">🌓</button>'
+    +   '<span class="portal-user"><span class="portal-uname">' + U.esc(u.displayName || '') + '</span>'
+    +     '<span class="portal-urole">' + roleText + '</span></span>'
+    +   '<button class="portal-top-btn" id="portal-logout" title="退出登录" aria-label="退出登录">⏻</button>'
+    + '</div>'
+    + '<div class="portal-hero">'
+    +   '<h1 class="portal-title portal-sys-title">鹊动 FAC 功能评估与干预系统</h1>'
+    +   '<p class="portal-subtitle">请选择功能模块进入</p>'
+    + '</div>'
+    + '<div class="portal-portal-stage-wrap">'
+    +   '<div class="portal-stage">'
+    +     '<div class="portal-track">' + visible.map(cardHTML).join('') + '</div>'
+    +   '</div>'
+    + '</div>'
+    // 底部居中：圆形切换按钮（左右）+ 中间指示点
+    + '<div class="portal-navbar">'
+    +   '<button class="portal-nav prev" id="portal-prev" aria-label="上一个">‹</button>'
+    +   '<div class="portal-dots">' + visible.map(function (c, i) { return '<button class="pdot' + (i === active ? ' on' : '') + '" data-i="' + i + '" aria-label="第' + (i + 1) + '个模块"></button>'; }).join('') + '</div>'
+    +   '<button class="portal-nav next" id="portal-next" aria-label="下一个">›</button>'
+    + '</div>'
+    + '</div>';
+  const cards$ = Array.prototype.slice.call(main.querySelectorAll('.portal-card.pg-card'));
+  const dots$ = Array.prototype.slice.call(main.querySelectorAll('.pdot'));
+  function update() {
+    cards$.forEach(function (el, i) {
+      el.setAttribute('data-off', String(shortestOff(i, active)));
+      el.classList.toggle('is-active', i === active);
+    });
+    dots$.forEach(function (d, i) { d.classList.toggle('on', i === active); });
+  }
+  const prev = main.querySelector('#portal-prev'); if (prev) prev.onclick = function () { active = (active - 1 + len) % len; update(); };
+  const next = main.querySelector('#portal-next'); if (next) next.onclick = function () { active = (active + 1) % len; update(); };
+  const stage = main.querySelector('.portal-stage');
+  if (stage) {
+    let wheelLock = false;
+    stage.addEventListener('wheel', function (e) {
+      const dx = e.deltaX, dy = e.deltaY;
+      const delta = Math.abs(dx) > Math.abs(dy) ? dx : dy;
+      if (!delta) return;
+      e.preventDefault();
+      if (wheelLock) return;
+      wheelLock = true;
+      active = (active + (delta > 0 ? 1 : -1) + len) % len;
+      update();
+      setTimeout(function () { wheelLock = false; }, 480);
+    }, { passive: false });
+  }
+  cards$.forEach(function (el) {
+    el.onclick = function () {
+      const i = +el.getAttribute('data-i');
+      if (i === active) enterFromPortal(visible[i]);
+      else { active = i; update(); }
+    };
+  });
+  dots$.forEach(function (el) { el.onclick = function () { active = +el.getAttribute('data-i'); update(); }; });
+  const th = main.querySelector('#portal-theme'); if (th) th.onclick = function () { (window.Skin && Skin.toggleMode) ? Skin.toggleMode() : toggleTheme(); };
+  const lo = main.querySelector('#portal-logout'); if (lo) lo.onclick = function () { U.confirm('退出后需重新登录才能继续操作。', doLogout, { title: '退出登录', heading: '确认退出当前账号？', okText: '退出登录' }); };
+  window.__portalNav = {
+    prev: function () { active = (active - 1 + len) % len; update(); },
+    next: function () { active = (active + 1 + len) % len; update(); }
+  };
+  // 进场：先移除 preload 解锁过渡，再加 is-in 触发标题/副标题/卡片淡入
+  requestAnimationFrame(function () {
+    const p = main.querySelector('.portal');
+    if (!p) return;
+    p.classList.remove('preload');
+    requestAnimationFrame(function () { p.classList.add('is-in'); });
+  });
+
+  /* ===== Portal 背景已移除（用户 8/18 要求） ===== */
+}
+
+function enterFromPortal(c) {
+  if (!c) return;
+  if (c.reserved) { if (window.U && U.toast) U.toast('该模块即将上线', 'info'); return; }
+  if (c.hash) location.hash = c.hash;
+  else setModule(c.id, { navigate: true });
+}
+Pages.home = renderPortal;
 
 /* ==================== 共享：肌力标准化评估结果卡片 ==================== */
 window.buildStrengthScoreCard = function (scored, opts) {
@@ -1640,22 +2304,6 @@ window.SmartForm = (function () {
 /* ==================== 页面注册容器（声明已提前至全局状态区） ==================== */
 
 /* ==================== 工作台首页 ==================== */
-// KPI 行 · 两台账复用
-function kpiRow(list, todayCount, withStrength, withPlan) {
-  const totalAll = AppState.patients.length;
-  const total = list.length;
-  const county = AppState.patients.reduce((s, p) => s + (p.data && p.data.patient && p.data.patient.region && p.data.patient.region.county ? 1 : 0), 0);
-  return `
-    <div class="card mt-3">
-      <div class="card-body" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;">
-        <div class="stat-card"><div class="stat-value">${total}</div><div class="stat-label">体重管理档案${totalAll !== total ? `（总 ${totalAll}）` : ''}</div></div>
-        <div class="stat-card"><div class="stat-value">${todayCount}</div><div class="stat-label">今日更新</div></div>
-        <div class="stat-card"><div class="stat-value">${withPlan}</div><div class="stat-label">已生成方案</div></div>
-        <div class="stat-card"><div class="stat-value">${county}</div><div class="stat-label">已登记县区</div></div>
-      </div>
-    </div>`;
-}
-
 // 3D 今日待办卡片 · 共用渲染（体重 / 肌少症）
 function ttCard(direction) {
   if (!window.TodayTodo) return '';
@@ -1680,7 +2328,6 @@ function ttCard(direction) {
   }
   return window.TodayTodo.renderCard(direction, items, breakdown);
 }
-window.kpiRow = kpiRow;
 window.ttCard = ttCard;
 
 Pages.dashboard = async function () {
@@ -1691,72 +2338,22 @@ Pages.dashboard = async function () {
     return !!(d.assessment || d.plan || d.lifestyle);
   });
   const total = list.length;
-  const totalAll = allList.length;
-  const today = U.today();
-  const todayCount = list.filter(p => U.fmtDate(p.updatedAt) === today).length;
-  const withStrength = list.filter(p =>
-    (p.data?.isokineticData?.length || 0) + (p.data?.isotonicData?.length || 0) > 0).length;
-  const withPlan = list.filter(p => p.data?.plan && p.data.plan.generatedAt).length;
 
   const recent = [...list].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).slice(0, 6);
 
-  // —— S6 工作台首页「继续工作流」进度提示：把登记→评估→方案串成工作流 ——
-  const WF = (() => {
-    const focus = (AppState.patient && list.find(p => p.id === AppState.patient.id))
-      || [...list].sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0))[0] || null;
-    if (!focus) {
-      return `<div class="card mt-3 wf-card wf-empty">
-        <div class="card-body" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-          <div><div style="font-weight:700;font-size:15px;">开始你的第一条临床工作流</div>
-          <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">登记 → 评估 → 智能方案，三步即可为患者生成标准化干预方案</div></div>
-          <a href="#/patient" class="btn btn-primary">＋ 新建首位患者</a>
-        </div></div>`;
-    }
-    const d = focus.data || {};
-    const steps = [
-      { key: 'patient', label: '患者登记', hash: '#/patient', done: !!(d.patient && (d.patient.name || focus.patientName)), sub: '基础信息与病史' },
-      { key: 'assessment', label: '综合评估', hash: '#/assessment', done: !!(d.assessment && (d.assessment.height || d.assessment.weight)), sub: '体测与风险判定' },
-      { key: 'plan', label: '智能方案', hash: '#/plan', done: !!(d.plan && d.plan.generatedAt), sub: '营养运动处方' }
-    ];
-    const nextIdx = steps.findIndex(s => !s.done);
-    const allDone = nextIdx === -1;
-    const curIdx = allDone ? steps.length - 1 : nextIdx;
-    const cont = allDone ? steps[steps.length - 1] : steps[nextIdx];
-    const bar = steps.map((s, i) => {
-      const cls = s.done ? 'done' : (i === curIdx ? 'current' : 'todo');
-      const mark = s.done ? '✓' : (i + 1);
-      const sep = i < steps.length - 1 ? `<span class="wf-bar ${s.done ? 'done' : ''}"></span>` : '';
-      return `<a class="wf-step ${cls}" href="${s.hash}">
-          <span class="wf-node">${mark}</span>
-          <span class="wf-meta"><span class="wf-label">${s.label}</span><span class="wf-sub">${s.sub}</span></span>
-        </a>${sep}`;
-    }).join('');
-    const contLabel = allDone ? '查看 / 分享方案' : `继续：进入「${cont.label}」`;
-    const focusName = U.esc(focus.patientName || (d.patient && d.patient.name) || '未命名');
-    return `<div class="card mt-3 wf-card">
-      <div class="card-header"><h3 class="card-title"><span class="card-title-icon">🧩</span>我的工作流进度</h3>
-        <span class="badge badge-info">当前患者：${focusName}</span></div>
-      <div class="card-body">
-        <div class="wf-steps">${bar}</div>
-        <div style="margin-top:18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-          <a href="${cont.hash}" class="btn btn-primary">${allDone ? '✅ ' : '➡ '}${contLabel}</a>
-          <span style="font-size:13px;color:var(--text-muted);">${allDone ? '该患者的登记·评估·方案均已完成' : `已完成 ${nextIdx} / 3 步，下一步：${cont.label}`}</span>
-        </div>
-      </div></div>`;
-  })();
+  // 工作流卡片（WF）已移除：台账直接展示患者，登记/评估/方案进度已内化至 3D 轮播顶部
 
-  // 体重管理患者列表（3D 卡片轮播）· 移到今日待办上方
+  // 体重管理患者列表：复用 Portal 首页 3D 卡片轮播
   const ptCardHost = `<div class="card mt-3 pt-card-host">
       <div class="card-header"><h3 class="card-title"><span class="card-title-icon">🧑‍⚕️</span>体重管理患者列表</h3>
         <span class="badge badge-info" id="pt-count">${list.length} 位在管</span></div>
-      <div class="card-body">
+      <div class="card-body pt-body-v">
         <div class="pt-mid">
-          <div class="pt-carousel-wrap">
-            <div class="pt-carousel"><div class="pt-orbit"></div><div class="pt-floor"></div><div class="pt-ring" id="pt-ring"></div></div>
-            <div class="pt-ctrl">
-              <button class="pt-btn" id="pt-prev">‹</button>
-              <span class="pt-cap" id="pt-cap">点击卡片或按钮切换</span>
-              <button class="pt-btn" id="pt-next">›</button>
+          <div class="portal-stage pt-stage" id="pt-stage">
+            <div class="portal-track" id="pt-track"></div>
+            <div class="portal-navgroup">
+              <button class="portal-nav prev" id="pt-prev" aria-label="上一位">‹</button>
+              <button class="portal-nav next" id="pt-next" aria-label="下一位">›</button>
             </div>
           </div>
           <div class="pt-detail">
@@ -1774,8 +2371,8 @@ Pages.dashboard = async function () {
               <div class="pt-cell"><div class="k">评估完整度</div><div class="vv" id="pt-d-pct">—</div></div>
             </div>
             <div class="pt-ai" id="pt-d-advice"></div>
-            <div style="display:flex;gap:10px;margin-top:2px;">
-              <button class="btn btn-primary btn-sm" id="pt-open">调阅档案</button>
+            <div class="pt-actions">
+              <button class="btn btn-primary btn-sm" id="pt-open">📋 调阅档案</button>
               <button class="btn btn-ghost btn-sm" id="pt-assess">进入评估</button>
             </div>
           </div>
@@ -1824,83 +2421,55 @@ Pages.dashboard = async function () {
   } catch (er) { console.error('方案库速览加载失败', er); }
   setTimeout(() => { const m = U.qs('#main-content'); if (m) PlanMediaView.hydrate(m); }, 80);
   setTimeout(() => { try { window.initPatientCarousel && window.initPatientCarousel(); } catch (e) { console.error('患者轮播初始化失败', e); } }, 90);
+  // 今日待办悬浮图标：点击弹出 / 收起；点击空白处关闭
+  setTimeout(() => {
+    try {
+      const fab = U.qs('#lw-todo-fab'); const pop = U.qs('#lw-todo-pop');
+      const backdrop = U.qs('#lw-todo-backdrop'); const closeBtn = U.qs('#lw-todo-close');
+      if (fab && pop) {
+        const hide = () => { pop.classList.remove('open'); fab.classList.remove('active'); };
+        fab.onclick = (ev) => { ev.stopPropagation(); pop.classList.toggle('open'); fab.classList.toggle('active', pop.classList.contains('open')); };
+        if (backdrop) backdrop.onclick = hide;
+        if (closeBtn) closeBtn.onclick = hide;
+        if (window.addEventListener) window.addEventListener('keydown', function (e) { if (e.key === 'Escape' && pop.classList.contains('open')) hide(); });
+      }
+    } catch (e) { console.error('今日待办悬浮按钮绑定失败', e); }
+  }, 100);
 
-  return `
-    <div class="hero-section">
-      <div class="hero-content">
-        <h1>体重管理台账</h1>
-        <p>体重管理（全年龄 · 减重 / 增肌）患者的工作台 · 3D 卡片式患者列表 · 评估 / 方案 / 报告 一览</p>
-        <div class="hero-cta">
-          <a href="#/patient" class="btn btn-primary">新建患者登记</a>
-          <a href="#/assessment" class="btn btn-secondary">进入体重管理评估</a>
-        </div>
-      </div>
-      <div class="hero-image"><img src="images/home-hero.png" alt="体重管理台账" onerror="this.style.display='none'"></div>
-    </div>
+  const execCard = (window.TrainingExecution && window.TrainingExecution.ledgerCard) ? window.TrainingExecution.ledgerCard('weight') : '';
+  const remCard = reminders.length ? `
+    <div class="card mt-3"><div class="card-header"><h3 class="card-title"><span class="card-title-icon">⏰</span>周期复测提醒</h3>
+      <span class="badge badge-warning">${reminders.length} 位患者待复测</span></div>
+      <div class="card-body"><div class="table-wrap"><table>
+        <thead><tr><th>患者姓名</th><th>末次测评日期</th><th>距今天数</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody>${reminders.map(r => `<tr><td><strong>${U.esc(r.name)}</strong></td><td>${U.fmtDate(r.last)}</td><td>${r.days} 天</td>
+          <td>${r.days >= CONST.RETEST_CYCLE_DAYS ? '<span class="badge badge-danger">已到复测周期</span>' : '<span class="badge badge-warning">临近复测</span>'}</td>
+          <td><button class="btn btn-sm btn-primary" onclick="openPatient('${r.id}')">调阅档案</button></td></tr>`).join('')}</tbody>
+      </table></div></div></div>` : '';
+  const titleBar = `<div class="ledger-titlebar lt-weight">
+    <a href="#/patient" class="btn btn-primary lt-cta lt-cta-left">＋ 新建患者</a>
+    <div class="lt-brand"><span class="lt-ico">⚖️</span><div class="lt-text"><h1>体重管理台账</h1><span class="lt-sub">全年龄 · 减重 / 增肌 · <b>${list.length} 位在管</b></span></div></div>
+  </div>`;
 
-    ${kpiRow(list, todayCount, withStrength, withPlan)}
+  // 今日待办：移出常规流，改为右下角悬浮图标，点击弹出查看
+  const todoHtml = ttCard('weight');
+  let todoCount = 0;
+  if (window.TodayTodo && window.TodayTodo.buildWeight) {
+    try { todoCount = window.TodayTodo.buildWeight(AppState.patients).items.length; } catch (e) {}
+  }
 
-    ${ptCardHost}
-
-    ${ttCard('weight')}
-
-    ${window.TrainingExecution ? window.TrainingExecution.ledgerCard('weight') : ''}
-
-    ${WF}
-
-    ${list.length === 0 ? `
-    <div class="card mt-3">
-      <div class="card-body" style="padding:32px 24px;text-align:center;">
-        <div style="font-size:42px;margin-bottom:12px;">⚖️</div>
-        <div style="font-weight:700;font-size:15px;">尚无体重管理患者</div>
-        <div style="margin-top:8px;font-size:13px;color:var(--text-muted);">完成登记后，进入「体重管理评估」即会自动归档到本台账。</div>
-        <div style="margin-top:14px;display:flex;gap:10px;justify-content:center;">
-          <a href="#/patient" class="btn btn-primary">新建患者登记</a>
-        </div>
-      </div>
-    </div>` : ''}
-
-    ${reminders.length ? `
-    <div class="card mt-3">
-      <div class="card-header"><h3 class="card-title"><span class="card-title-icon">⏰</span>周期复测提醒</h3>
-        <span class="badge badge-warning">${reminders.length} 位患者待复测</span></div>
-      <div class="card-body">
-        <div class="table-wrap"><table>
-          <thead><tr><th>患者姓名</th><th>末次测评日期</th><th>距今天数</th><th>状态</th><th>操作</th></tr></thead>
-          <tbody>${reminders.map(r => `<tr>
-            <td><strong>${U.esc(r.name)}</strong></td>
-            <td>${U.fmtDate(r.last)}</td>
-            <td>${r.days} 天</td>
-            <td>${r.days >= CONST.RETEST_CYCLE_DAYS
-              ? '<span class="badge badge-danger">已到复测周期</span>'
-              : '<span class="badge badge-warning">临近复测</span>'}</td>
-            <td><button class="btn btn-sm btn-primary" onclick="openPatient('${r.id}')">调阅档案</button></td>
-          </tr>`).join('')}</tbody>
-        </table></div>
-      </div>
-    </div>` : ''}
-
-    <div class="card mt-3">
-      <div class="card-header"><h3 class="card-title"><span class="card-title-icon">🧭</span>标准临床工作流</h3></div>
-      <div class="card-body">
-        ${[
-          ['1', '患者首诊登记', '采集基础信息、减重目标、病史用药、生活/运动/饮食基线', '#/patient'],
-          ['2', '综合评估', '体格测量、体成分、能量代谢、运动风险自动判定', '#/assessment'],
-          ['3', '生活方式问卷评估', '六维度问卷，独立生成生活方式报告与干预建议', '#/lifestyle'],
-          ['4', '肌力专项测评', '等速 / 等张双体系，支持手动录入与官方 PDF 报告解析', '#/isokinetic'],
-          ['5', '智能方案生成', '营养处方 + 有氧 FITT-VP + 抗阻 + 柔韧 + 平衡 + 周日程', '#/plan'],
-          ['6', '报告管理中心', '综合/等速/等张/方案/生活方式 五类报告，支持组合打印导出', '#/report']
-        ].map(([n, t, d, h]) => `
-          <a href="${h}" style="display:flex;gap:14px;padding:14px 0;border-bottom:1px solid var(--border);text-decoration:none;">
-            <div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;background:var(--primary);color:#fff;
-              display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;">${n}</div>
-            <div><div style="font-weight:600;color:var(--text-primary);font-size:14px;">${t}</div>
-            <div style="font-size:12.5px;color:var(--text-muted);margin-top:3px;line-height:1.6;">${d}</div></div>
-          </a>`).join('')}
-      </div>
-    </div>
-
-    ${libPreview}
+  // 体重管理台账 · 新版布局：标题栏 / 患者左右结构（左侧 3D 轮播 / 右侧详情） / 训练执行 + 复测左右并排
+  // 移除了「我的工作流进度」卡片（用户要求），空态不再占据独立卡片位置
+  const bottomCards = [execCard, remCard].filter(Boolean).join('');
+  const bottomRowHtml = bottomCards ? '<div class="lw-bottom-row">' + bottomCards + '</div>' : '';
+  return `<div class="ledger-weight-wrap">
+    ${titleBar}
+    <div class="lw-top">${ptCardHost}</div>
+    ${bottomRowHtml}
+    ${todoHtml ? '<div class="lw-todo-pop" id="lw-todo-pop"><div class="lw-todo-backdrop" id="lw-todo-backdrop"></div><div class="lw-todo-panel" id="lw-todo-panel"><button type="button" class="lw-todo-close" id="lw-todo-close" aria-label="关闭">✕</button>' + todoHtml + '</div></div>' : ''}
+    <button type="button" class="lw-todo-fab" id="lw-todo-fab" title="今日待办" aria-label="今日待办">
+      <span class="lw-todo-ico">📌</span>${todoCount ? '<span class="lw-todo-badge">' + todoCount + '</span>' : ''}
+    </button>
   </div>`;
 };
 
@@ -1937,7 +2506,8 @@ function computePatientView() {
       risk: riskMap[er.level] || 'low',
       riskLabel: er.label || '低风险',
       score: (er.score != null ? er.score : ''),
-      pct, advice: er.advice || '', factors: er.factors || []
+      pct, advice: er.advice || '', factors: er.factors || [],
+      icon: '⚖️'
     };
   });
   out.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
@@ -1945,62 +2515,71 @@ function computePatientView() {
 }
 
 window.initPatientCarousel = function () {
-  const ring = U.qs('#pt-ring');
-  if (!ring) return;
+  const stage = U.qs('#pt-stage'), track = U.qs('#pt-track');
+  if (!track) return;
   if (window.__ptTimer) { clearInterval(window.__ptTimer); window.__ptTimer = null; }
   const view = computePatientView();
-  ring.innerHTML = '';
+  track.innerHTML = '';
   if (!view.length) {
-    ring.innerHTML = '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:14px;text-align:center;padding:20px;">暂无体重管理患者档案，请先登记后开展评估</div>';
+    stage.classList.add('pt-empty');
+    track.innerHTML =
+      '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;padding:28px;color:var(--text-primary);">' +
+        '<div style="font-size:64px;line-height:1;filter:drop-shadow(0 4px 12px rgba(99,102,241,.25));">⚖️</div>' +
+        '<div style="font-size:18px;font-weight:800;letter-spacing:.5px;">尚无体重管理患者档案</div>' +
+        '<div style="max-width:420px;font-size:13px;line-height:1.6;color:var(--text-muted);">系统会从登记台账中筛选「已开展评估/方案/生活方式数据」的患者进入本台账；点击下方按钮去登记首位患者。</div>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">' +
+          '<a href="#/patient" class="btn btn-primary" style="padding:10px 22px;font-weight:700;">＋ 新建患者登记</a>' +
+          '<a href="#/assessment" class="btn btn-ghost" style="padding:10px 22px;">或直接进入评估</a>' +
+        '</div>' +
+      '</div>';
     return;
   }
-  const N = view.length, step = 360 / N;
-  const RK = {
-    high: { lab: '高风险', ico: '<svg class="pt-rk-ico" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.5 20h19L12 3z"/><path d="M12 9.5v5"/><path d="M12 17.5h.01"/></svg>' },
-    mid:  { lab: '中风险', ico: '<svg class="pt-rk-ico" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5"/><path d="M12 16.5h.01"/></svg>' },
-    low:  { lab: '低风险', ico: '<svg class="pt-rk-ico" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v6c0 4.2 3 7.3 7 9 4-1.7 7-4.8 7-9V6l-7-3z"/><path d="M9 12l2 2 4-4.2"/></svg>' }
-  };
-  const cards = view.map((p, i) => {
-    const el = document.createElement('div');
-    el.className = 'pt-card ' + p.risk;
-    el.style.setProperty('--a', (i * step) + 'deg');
-    const r = RK[p.risk];
-    el.innerHTML =
-      `<span class="pt-shine"></span>
-       <div><div class="pt-nm">${U.esc(p.name)}</div><div class="pt-ag">${U.esc(p.gender)}${p.age ? ' · ' + p.age + '岁' : ''}</div></div>
-       <div class="pt-rk ${p.risk}">
-         <div class="pt-rk-row">${r.ico}<span class="pt-rk-lab">${r.lab}</span></div>
-         <div class="pt-rk-meter"><i></i><i></i><i></i></div>
-       </div>`;
-    el.addEventListener('click', () => { cur = i; render(); reset(); });
-    ring.appendChild(el);
-    return el;
-  });
-
-  let cur = 0;
-  const cardStyle = (idx, c) => {
-    let dist = Math.abs(idx - c); dist = Math.min(dist, N - dist);
-    if (dist === 0) return { sc: 1.34, op: 1, bl: '0px', br: 1 };
-    if (dist === 1) return { sc: 0.96, op: 0.9, bl: '0px', br: 0.92 };
-    if (dist === 2) return { sc: 0.8, op: 0.62, bl: '1.2px', br: 0.82 };
-    if (dist === 3) return { sc: 0.62, op: 0.4, bl: '2.2px', br: 0.72 };
-    return { sc: 0.5, op: 0.26, bl: '3px', br: 0.66 };
-  };
+  stage.classList.remove('pt-empty');
+  const N = view.length;
+  // [BUGFIX] active 必须在 cardHTML 首次调用前完成初始化，否则 let 的暂时性死区(TDZ)
+  // 会抛 ReferenceError，导致 track.innerHTML 赋值中断 → 3D 轮播容器整体不显示
+  let active = 0;
+  const RISK_COLOR = { high: '#dc2626', mid: '#f59e0b', low: '#10b981' };
+  const RISK_ICON = { high: '⚠️', mid: '⚡', low: '✅' };
+  function cardHTML(p, i) {
+    const color = RISK_COLOR[p.risk] || '#6c5ce7';
+    const icon = p.icon || RISK_ICON[p.risk] || '⚖️';
+    const demo = [p.gender, p.age ? p.age + '岁' : ''].filter(Boolean).join(' · ');
+    const riskCls = p.risk || 'low';
+    const riskLbl = p.riskLabel || '低风险';
+    return '<button class="portal-card pg-card' + (i === active ? ' is-active' : '') + '" data-i="' + i + '" data-off="0" style="--pc:' + color + '" aria-label="' + U.esc(p.name) + ' · ' + U.esc(riskLbl) + '">'
+      + '<span class="pc-edge"></span>'
+      + '<span class="pg-shine"></span>'
+      + '<span class="pg-watermark" aria-hidden="true">' + icon + '</span>'
+      + '<span class="pg-top">'
+      + '<span class="pg-name">' + U.esc(p.name) + '</span>'
+      + (demo ? '<span class="pg-desc">' + U.esc(demo) + '</span>' : '')
+      + '<span class="pg-risk pg-risk-' + riskCls + '">' + U.esc(riskLbl) + '</span>'
+      + '</span>'
+      + '<span class="pg-icon">' + icon + '</span>'
+      + '</button>';
+  }
+  track.innerHTML = view.map(cardHTML).join('');
+  const cards$ = Array.prototype.slice.call(track.querySelectorAll('.portal-card'));
+  function shortestOff(i, a) {
+    let off = i - a;
+    if (off > N / 2) off -= N;
+    if (off < -N / 2) off += N;
+    return off;
+  }
   const RISK_PILL = { high: 'badge-danger', mid: 'badge-warning', low: 'badge-success' };
   let currentId = view[0].id;
-  function render() {
-    ring.style.setProperty('--rot', (-cur * step) + 'deg');
-    cards.forEach((c, i) => {
-      const st = cardStyle(i, cur);
-      c.classList.toggle('is-front', i === cur);
-      c.style.setProperty('--sc', st.sc);
-      c.style.setProperty('--op', st.op);
-      c.style.setProperty('--bl', st.bl);
-      c.style.setProperty('--br', st.br);
+  function updateCards() {
+    cards$.forEach(function (el, i) {
+      el.setAttribute('data-off', String(shortestOff(i, active)));
+      el.classList.toggle('is-active', i === active);
     });
-    const p = view[cur];
+  }
+  function renderDetail() {
+    const p = view[active];
     currentId = p.id;
     const $ = id => document.getElementById(id);
+    if (!$('pt-d-av')) return;
     $('pt-d-av').textContent = (p.name || '?').charAt(0);
     $('pt-d-name').textContent = p.name;
     $('pt-d-sub').textContent = [p.gender, p.age ? p.age + '岁' : ''].filter(Boolean).join(' · ');
@@ -2010,19 +2589,161 @@ window.initPatientCarousel = function () {
     const pill = $('pt-d-riskpill');
     pill.textContent = p.riskLabel;
     pill.className = 'badge pt-risk-pill ' + (RISK_PILL[p.risk] || 'badge-info');
-    $('pt-d-advice').innerHTML = p.advice ? `<b>AI 建议：</b>${U.esc(p.advice)}` : '<span style="color:var(--text-muted)">暂无评估数据，无法生成建议</span>';
-    $('pt-cap').textContent = `第 ${cur + 1} / ${N} 位 · ${p.name}`;
+    $('pt-d-advice').innerHTML = p.advice ? '<b>AI 建议：</b>' + U.esc(p.advice) : '<span style="color:var(--text-muted)">暂无评估数据，无法生成建议</span>';
   }
-  const next = document.getElementById('pt-next');
+  function move(dir) {
+    active = (active + dir + N) % N;
+    updateCards();
+    renderDetail();
+    reset();
+  }
+  cards$.forEach(function (el) {
+    el.onclick = function () {
+      const i = +el.getAttribute('data-i');
+      if (i === active) { openPatient(currentId); }
+      else { active = i; updateCards(); renderDetail(); reset(); }
+    };
+  });
   const prev = document.getElementById('pt-prev');
+  const next = document.getElementById('pt-next');
+  if (prev) prev.onclick = () => move(-1);
+  if (next) next.onclick = () => move(1);
+  // 滚轮/触控板切换
+  if (stage) {
+    let wheelLock = false;
+    stage.addEventListener('wheel', function (e) {
+      const dx = e.deltaX, dy = e.deltaY;
+      const delta = Math.abs(dx) > Math.abs(dy) ? dx : dy;
+      if (!delta) return;
+      e.preventDefault();
+      if (wheelLock) return;
+      wheelLock = true;
+      move(delta > 0 ? 1 : -1);
+      setTimeout(function () { wheelLock = false; }, 480);
+    }, { passive: false });
+  }
   const openBtn = document.getElementById('pt-open');
   const assessBtn = document.getElementById('pt-assess');
-  if (next) next.onclick = () => { cur = (cur + 1) % N; render(); reset(); };
-  if (prev) prev.onclick = () => { cur = (cur - 1 + N) % N; render(); reset(); };
-  if (openBtn) openBtn.onclick = () => { loadPatientContext(currentId); location.hash = '#/center'; };
+  if (openBtn) openBtn.onclick = () => { loadPatientContext(currentId); location.hash = '#/report'; };
   if (assessBtn) assessBtn.onclick = () => { openPatient(currentId); };
-  function reset() { if (window.__ptTimer) clearInterval(window.__ptTimer); window.__ptTimer = setInterval(() => { if (!document.getElementById('pt-ring')) { clearInterval(window.__ptTimer); window.__ptTimer = null; return; } cur = (cur + 1) % N; render(); }, 5000); }
-  render(); reset();
+  function reset() {
+    if (window.__ptTimer) clearInterval(window.__ptTimer);
+    window.__ptTimer = setInterval(() => {
+      if (!document.getElementById('pt-track')) { clearInterval(window.__ptTimer); window.__ptTimer = null; return; }
+      move(1);
+    }, 5000);
+  }
+  updateCards(); renderDetail(); reset();
+};
+
+/* ==================== 通用登记/患者档案 3D 封面流轮播（肌少症 / 脊柱台账复用） ==================== */
+window.initRegistryCarousel = function (cfg) {
+  const track = U.qs('#' + cfg.trackId);
+  const stage = U.qs('#' + cfg.stageId);
+  if (!track) return;
+  if (window.__rcrTimer) { clearInterval(window.__rcrTimer); window.__rcrTimer = null; }
+  const view = cfg.view || [];
+  track.innerHTML = '';
+  if (!view.length) {
+    if (stage) stage.classList.add('pt-empty');
+    track.innerHTML = '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:14px;text-align:center;padding:20px;">' + (cfg.emptyText || '暂无登记档案，请先登记') + '</div>';
+    return;
+  }
+  if (stage) stage.classList.remove('pt-empty');
+  const N = view.length;
+  // [BUGFIX] 同 initPatientCarousel：active 需在 cardHTML 首次调用前初始化，
+  // 否则 TDZ ReferenceError 会中断渲染 → 肌少症/脊柱台账 3D 轮播容器不显示
+  let active = 0;
+  const RISK_COLOR = cfg.riskColors || { high: '#dc2626', mid: '#f59e0b', low: '#10b981' };
+  const RISK_ICON = cfg.riskIcons || { high: '⚠️', mid: '⚡', low: '✅' };
+  const cardHTML = (p, i) => {
+    const color = p.pc || RISK_COLOR[p.risk] || '#6c5ce7';
+    const icon = p.icon || RISK_ICON[p.risk] || '👤';
+    const demo = [p.gender || '', p.age ? p.age + '岁' : ''].filter(Boolean).join(' · ');
+    const riskCls = p.risk || 'low';
+    const riskLbl = p.riskLabel || '低风险';
+    return '<button class="portal-card pg-card' + (i === active ? ' is-active' : '') + '" data-i="' + i + '" data-off="0" style="--pc:' + color + '" aria-label="' + U.esc(p.name) + ' · ' + U.esc(riskLbl) + '">'
+      + '<span class="pc-edge"></span>'
+      + '<span class="pg-shine"></span>'
+      + '<span class="pg-watermark" aria-hidden="true">' + icon + '</span>'
+      + '<span class="pg-top">'
+      + '<span class="pg-name">' + U.esc(p.name) + '</span>'
+      + (demo ? '<span class="pg-desc">' + U.esc(demo) + '</span>' : '')
+      + '<span class="pg-risk pg-risk-' + riskCls + '">' + U.esc(riskLbl) + '</span>'
+      + '</span>'
+      + '<span class="pg-icon">' + icon + '</span>'
+      + '</button>';
+  };
+  track.innerHTML = view.map(cardHTML).join('');
+  const cards$ = Array.prototype.slice.call(track.querySelectorAll('.portal-card'));
+  const pre = cfg.prefix;
+  function shortestOff(i, a) {
+    let off = i - a;
+    if (off > N / 2) off -= N;
+    if (off < -N / 2) off += N;
+    return off;
+  }
+  const RISK_PILL = { high: 'badge-danger', mid: 'badge-warning', low: 'badge-success' };
+  let currentId = view[0].id;
+  function updateCards() {
+    cards$.forEach(function (el, i) {
+      el.setAttribute('data-off', String(shortestOff(i, active)));
+      el.classList.toggle('is-active', i === active);
+    });
+  }
+  function renderDetail() {
+    const p = view[active];
+    currentId = p.id;
+    const $ = id => document.getElementById(pre + '-' + id);
+    if (!$('d-av')) return;
+    $('d-av').textContent = (p.name || '?').charAt(0);
+    $('d-name').textContent = p.name;
+    $('d-sub').textContent = [p.gender, p.age ? p.age + '岁' : ''].filter(Boolean).join(' · ');
+    const pill = $('d-riskpill');
+    if (pill) { pill.textContent = p.riskLabel || '—'; pill.className = 'badge pt-risk-pill ' + (RISK_PILL[p.risk] || 'badge-info'); }
+    const grid = $('d-grid');
+    if (grid) grid.innerHTML = (p.cells || []).map(c => '<div class="pt-cell"><div class="k">' + U.esc(c.k) + '</div><div class="vv">' + U.esc(String(c.v)) + '</div></div>').join('');
+    const advice = $('d-advice');
+    if (advice) advice.innerHTML = p.adviceHtml || '<span style="color:var(--text-muted)">暂无评估数据，无法生成建议</span>';
+  }
+  function move(dir) { active = (active + dir + N) % N; updateCards(); renderDetail(); reset(); }
+  cards$.forEach(function (el) {
+    el.onclick = function () {
+      const i = +el.getAttribute('data-i');
+      if (i === active) { cfg.onOpen && cfg.onOpen(currentId); }
+      else { active = i; updateCards(); renderDetail(); reset(); }
+    };
+  });
+  const prev = document.getElementById(pre + '-prev');
+  const next = document.getElementById(pre + '-next');
+  if (prev) prev.onclick = () => move(-1);
+  if (next) next.onclick = () => move(1);
+  if (stage) {
+    let wheelLock = false;
+    stage.addEventListener('wheel', function (e) {
+      const dx = e.deltaX, dy = e.deltaY;
+      const delta = Math.abs(dx) > Math.abs(dy) ? dx : dy;
+      if (!delta) return;
+      e.preventDefault();
+      if (wheelLock) return;
+      wheelLock = true;
+      move(delta > 0 ? 1 : -1);
+      setTimeout(function () { wheelLock = false; }, 480);
+    }, { passive: false });
+  }
+  function bindBtn(id, fn) { const b = document.getElementById(pre + '-' + id); if (b) b.onclick = () => fn && fn(currentId); }
+  bindBtn('open', cfg.onOpen);
+  bindBtn('assess', cfg.onAssess);
+  bindBtn('edit', cfg.onEdit);
+  bindBtn('del', cfg.onDel);
+  function reset() {
+    if (window.__rcrTimer) clearInterval(window.__rcrTimer);
+    window.__rcrTimer = setInterval(function () {
+      if (!document.getElementById(cfg.trackId)) { clearInterval(window.__rcrTimer); window.__rcrTimer = null; return; }
+      move(1);
+    }, 5000);
+  }
+  updateCards(); renderDetail(); reset();
 };
 
 /* ==================== 设备档案页 ==================== */

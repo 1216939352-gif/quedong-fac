@@ -262,7 +262,9 @@
   }
   function basePatient() {
     const id = activePatientId();
-    if (!id) return { id: null, name: '', gender: 'male', age: null, height: null, weight: null, bmi: null, chronic: null, phone: '' };
+    /* [临时放开·仅本地查看用] 无评估对象时注入演示基线，便于直开 #/sarcopenia-assess 查看真实页面；正式运行请恢复下方注释行 */
+    if (!id) return { id: null, name: '王秀兰(演示)', gender: 'female', age: 78, height: 158, weight: 52, bmi: 20.8, chronic: '高血压', phone: '138****0000' };
+    // if (!id) return { id: null, name: '', gender: 'male', age: null, height: null, weight: null, bmi: null, chronic: null, phone: '' };
     const p = D().getPatient(id) || {};
     const height = E().num(p.height), weight = E().num(p.weight);
     const bmi = (height && weight) ? U.round(weight / Math.pow(height / 100, 2), 1) : null;
@@ -289,11 +291,15 @@
 
   /* 从台账「开始评估」进入向导前，将选中登记档案绑定到当前草稿 */
   function startAssess(pid) {
-    const d = D().getDraft() || {};
-    d.patientId = pid;
-    if (!d.id) d.id = 'sarc_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    if (!d.step) d.step = 1;
-    if (!d.body) d.body = { smi: '', bodyFat: '', visceral: '', muscleMass: '', bmr: '', weight: '' };
+    /* 复测/进入评估：始终在该患者名下新建一套空白评估草稿（step:1、全新 id），
+       不复用 localStorage 中残留的旧草稿，避免跳转到上次评估结束的步骤 */
+    const d = {
+      id: 'sarc_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      patientId: pid,
+      step: 1,
+      body: { smi: '', bodyFat: '', visceral: '', muscleMass: '', bmr: '', weight: '' },
+      assessDate: U.today()
+    };
     D().saveDraft(d);
     location.hash = '#/sarcopenia-assess';
   }
@@ -387,21 +393,34 @@
       const bmi = (h && w) ? U.round(w / Math.pow(h / 100, 2), 1) : null;
       const riskMap = { high: 'high', medium: 'mid', low: 'low' };
       const risk = riskMap[fall && fall.levelKey] || 'low';
+      const cells = [
+        { k: 'BMI', v: bmi != null ? bmi : '—' },
+        { k: '已评估', v: recs.length + ' 次' },
+        { k: '最近评估', v: latest ? (latest.assessDate || '—') : '—' }
+      ];
+      const parts = [];
+      if (rs && rs.direction) parts.push('<b>肌少症分级：</b>' + U.esc(rs.direction.sarcGrade || '—') + (rs.direction.sarcGradeDesc ? ' — ' + U.esc((rs.direction.sarcGradeDesc || '').slice(0, 32)) : ''));
+      if (rs && rs.sppb && rs.sppb.complete) parts.push('<b>SPPB：</b>' + rs.sppb.total + ' / 12');
+      if (rs && rs.sarcf && rs.sarcf.complete) parts.push('<b>SARC-F：</b>' + rs.sarcf.total + ' / 10');
+      if (rs && rs.plan && rs.plan.reviewDate) parts.push('<b>建议复查：</b>' + U.esc(rs.plan.reviewDate));
       return {
         id: p.id,
         name: p.name || '未命名',
         gender: p.gender === 'female' ? '女' : '男',
         age: p.age != null ? p.age : '',
         bmi,
-        recs,
-        latest,
         risk,
         riskLabel: fall ? fall.level : '低风险',
+        cells,
+        adviceHtml: parts.length ? parts.join('<br>') : '<span style="color:var(--text-muted)">该登记人尚未完成肌少症评估，点击「进入评估」开始 8 步标准化测评。</span>',
+        recs,
+        latest,
         fallIndex: fall ? fall.index : '',
         direction: rs ? rs.direction : null,
         sppb: rs ? rs.sppb : null,
         sarcf: rs ? rs.sarcf : null,
-        plan: rs ? rs.plan : null
+        plan: rs ? rs.plan : null,
+        icon: '🪪'
       };
     }).sort((a, b) => new Date((b.latest || {}).assessDate || 0) - new Date((a.latest || {}).assessDate || 0));
   }
@@ -509,126 +528,110 @@
 
     const sview = computeSarcPatientView();
 
-    // S7：从真实数据动态生成「肌少症分级」筛选项，避免硬编码枚举
-    const gradeMap = new Map();
-    all.forEach(r => {
-      const d = (r.result && r.result.direction) || {};
-      const lvl = d.sarcGradeLevel || 'na';
-      if (!gradeMap.has(lvl)) gradeMap.set(lvl, d.sarcGrade || (lvl === 'na' ? '未分级' : lvl));
+    // 肌少症分级筛选项随 ledgerCard 一起移除
+    // —— 同款布局：标题栏 / 患者左右结构（3D 轮播 + 详情） / 训练执行 + 复测 左右并排 / 今日待办抽屉 ——
+    const titleBar = `<div class="ledger-titlebar lt-sarc">
+      <button class="btn btn-primary lt-cta lt-cta-left" id="btn-new-reg">＋ 新建首诊登记</button>
+      <div class="lt-brand"><span class="lt-ico">🪪</span><div class="lt-text"><h1>肌少症-跌倒风险台账</h1><span class="lt-sub">独立档案 · <b>${patients.length} 位在管</b></span></div></div>
+    </div>`;
+
+    const ptCardHost = `<div class="card mt-3 pt-card-host">
+      <div class="card-header"><h3 class="card-title"><span class="card-title-icon">🪪</span>肌少症首诊登记名册（独立档案）</h3>
+        <span class="badge badge-info" id="sr-count">${patients.length} 位在管</span></div>
+      <div class="card-body pt-body-v">
+        <div class="pt-mid">
+          <div class="portal-stage pt-stage" id="sr-stage">
+            <div class="portal-track" id="sr-track"></div>
+            <div class="portal-navgroup">
+              <button class="portal-nav prev" id="sr-prev" aria-label="上一位">‹</button>
+              <button class="portal-nav next" id="sr-next" aria-label="下一位">›</button>
+            </div>
+          </div>
+          <div class="pt-detail">
+            <div class="pt-detail-top">
+              <div class="pt-d-av" id="sr-d-av">—</div>
+              <div><div class="pt-d-name" id="sr-d-name">—</div><div class="pt-d-sub" id="sr-d-sub"></div></div>
+              <span class="badge pt-risk-pill" id="sr-d-riskpill"></span>
+            </div>
+            <div class="pt-grid" id="sr-d-grid"></div>
+            <div class="pt-ai" id="sr-d-advice"></div>
+            <div class="pt-actions">
+              <button class="btn btn-primary btn-sm" id="sr-open">📋 调阅档案</button>
+              <button class="btn btn-sm" id="sr-assess">进入评估</button>
+              <button class="btn btn-ghost btn-sm" id="sr-edit">编辑档案</button>
+              <button class="btn btn-ghost btn-sm" id="sr-del" style="color:var(--danger)">删除</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+    // 工作流卡片（WF / sarc2Bar / ledgerCard / trendCard / emptyCard）已移除：
+    // 台账只保留「患者左右结构（3D 轮播 + 详情）」+ 「训练执行 / 复测 左右并排」 + 「今日待办（悬浮抽屉）」
+
+    const execCard = (window.TrainingExecution && window.TrainingExecution.ledgerCard) ? window.TrainingExecution.ledgerCard('sarcopenia') : '';
+
+    const reminders = [];
+    patients.forEach(p => {
+      const recs = D().listByPatient(p.id).sort((a, b) => new Date(b.assessDate || 0) - new Date(a.assessDate || 0));
+      const latest = recs[0];
+      if (latest && latest.result && latest.result.plan && latest.result.plan.reviewDate) {
+        const days = U.daysBetween(latest.result.plan.reviewDate, new Date());
+        if (days <= 30) reminders.push({ name: p.name, id: p.id, date: latest.result.plan.reviewDate, days });
+      }
     });
-    let gradeOptionsHTML = '<option value="">全部分级</option>';
-    gradeMap.forEach((label, lvl) => { gradeOptionsHTML += `<option value="${U.esc(lvl)}">${U.esc(label)}</option>`; });
-    const registryHTML = patients.length ? `<div class="sr-mid">
-      <div class="sr-carousel-wrap">
-        <div class="sr-carousel"><div class="sr-orbit"></div><div class="sr-floor"></div><div class="sr-ring" id="sr-ring"></div></div>
-        <div class="sr-ctrl">
-          <button class="sr-btn" id="sr-prev">‹</button>
-          <span class="sr-cap" id="sr-cap">点击卡片或按钮切换</span>
-          <button class="sr-btn" id="sr-next">›</button>
-        </div>
-      </div>
-      <div class="sr-detail">
-        <div class="sr-detail-top">
-          <div class="sr-d-av" id="sr-d-av">—</div>
-          <div>
-            <div class="sr-d-name" id="sr-d-name">—</div>
-            <div class="sr-d-sub" id="sr-d-sub"></div>
-          </div>
-          <span class="badge sr-risk-pill" id="sr-d-riskpill"></span>
-        </div>
-        <div class="sr-grid">
-          <div class="sr-cell"><div class="k">BMI</div><div class="vv" id="sr-d-bmi">—</div></div>
-          <div class="sr-cell"><div class="k">已评估</div><div class="vv" id="sr-d-recs">—</div></div>
-          <div class="sr-cell"><div class="k">最近评估</div><div class="vv" id="sr-d-date">—</div></div>
-        </div>
-        <div class="sr-ai" id="sr-d-advice"></div>
-        <div style="display:flex;gap:10px;margin-top:2px;flex-wrap:wrap;">
-          <button class="btn btn-primary btn-sm" id="sr-start">开始评估</button>
-          <button class="btn btn-ghost btn-sm" id="sr-edit">编辑</button>
-          <button class="btn btn-ghost btn-sm" id="sr-pdel" style="color:var(--danger);">删除</button>
-        </div>
-      </div>
-    </div>` : `<div class="sarc-empty">
-        <div style="font-size:44px;">🧓</div>
-        <p><b>尚无肌少症专项首诊登记</b></p>
-        <p style="font-size:13px;color:var(--text-muted);">本模块拥有独立首诊登记档案，不共享系统用户档案；请点击上方「新建首诊登记」创建第一位老人的独立登记。</p>
-      </div>`;
+    const remCard = reminders.length ? `<div class="card mt-3"><div class="card-header"><h3 class="card-title"><span class="card-title-icon">⏰</span>周期复测提醒</h3><span class="badge badge-warning">${reminders.length} 位登记人临期</span></div>
+      <div class="card-body"><div class="table-wrap"><table>
+        <thead><tr><th>登记人</th><th>建议复查日期</th><th>剩余天数</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody>${reminders.map(r => `<tr><td><strong>${U.esc(r.name)}</strong></td><td>${U.esc(r.date)}</td><td>${r.days} 天</td>
+          <td>${r.days <= 0 ? '<span class="badge badge-danger">已到复查</span>' : '<span class="badge badge-warning">临近复查</span>'}</td>
+          <td><button class="btn btn-sm btn-primary sr-rem-btn" data-id="${r.id}">进入评估</button></td></tr>`).join('')}</tbody>
+      </table></div></div></div>` : '';
 
-    const wrap = U.el(`<div>
-      ${moduleBanner()}
+    const todoHtml = ttCard('sarc');
+    let todoCount = 0;
+    try { todoCount = (window.TodayTodo.buildSarc(all).items || []).length; } catch (e) {}
+    const todoDrawer = todoHtml ? '<div class="lw-todo-pop" id="lw-todo-pop"><div class="lw-todo-backdrop" id="lw-todo-backdrop"></div><div class="lw-todo-panel" id="lw-todo-panel"><button type="button" class="lw-todo-close" id="lw-todo-close" aria-label="关闭">✕</button>' + todoHtml + '</div></div>' : '';
+    const todoFab = `<button type="button" class="lw-todo-fab" id="lw-todo-fab" title="今日待办" aria-label="今日待办"><span class="lw-todo-ico">📌</span>${todoCount ? '<span class="lw-todo-badge">' + todoCount + '</span>' : ''}</button>`;
 
-      <div class="card mt-3">
-        <div class="card-body" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;">
-          <div class="stat-card"><div class="stat-value">${patients.length}</div><div class="stat-label">在管老人</div></div>
-          <div class="stat-card"><div class="stat-value">${all.length}</div><div class="stat-label">累计评估次数</div></div>
-          <div class="stat-card"><div class="stat-value">${all.filter(r => (r.result && r.result.fall && r.result.fall.levelKey === 'high')).length}</div><div class="stat-label">跌倒高风险</div></div>
-          <div class="stat-card"><div class="stat-value">${all.filter(r => { const g = (r.result && r.result.direction && r.result.direction.sarcGrade) || ''; return g === '严重肌少症' || g === '确认肌少症'; }).length}</div><div class="stat-label">严重肌少症</div></div>
-        </div>
-      </div>
+    // 底部左右并排：训练执行记录 + 周期复测提醒
+    const bottomCards = [execCard, remCard].filter(Boolean).join('');
+    const bottomRowHtml = bottomCards ? '<div class="lw-bottom-row">' + bottomCards + '</div>' : '';
 
-      <div class="sarc-toolbar no-print" style="display:flex;gap:8px;margin:10px 0 0;flex-wrap:wrap;">
-        <button class="btn btn-ghost btn-sm" id="btn-sarc2">🧪 严谨版方案（可解释）</button>
-      </div>
-
-      <div class="card mt-3 sr-card-host">
-        <div class="card-header">
-          <h3 class="card-title"><span class="card-title-icon">🪪</span>肌少症专项 · 首诊登记名册（独立档案，不共享系统用户档案）</h3>
-          <div class="no-print"><button class="btn btn-primary btn-sm" id="btn-new-reg">＋ 新建首诊登记</button></div>
-        </div>
-        <div class="card-body">${registryHTML}</div>
-      </div>
-
-      ${typeof window.TodayTodo === 'object' ? window.TodayTodo.renderCard('sarc', window.TodayTodo.buildSarc(all).items, window.TodayTodo.buildSarc(all).breakdown) : ''}
-
-      ${window.TrainingExecution ? window.TrainingExecution.ledgerCard('sarcopenia') : ''}
-
-      <div class="sarc-stat-row">
-        ${statMini('首诊登记人数', patients.length, '人', 'var(--primary)')}
-        ${statMini('模块累计评估', all.length, '次', 'var(--info)')}
-        ${statMini('最近评估日期', all.length ? all.slice().sort((a, b) => new Date(b.assessDate || 0) - new Date(a.assessDate || 0))[0].assessDate : '—', '', 'var(--success)')}
-        ${statMini('下次复查建议', focusRecords[0] && focusRecords[0].result && focusRecords[0].result.plan ? focusRecords[0].result.plan.reviewDate : '—', '', 'var(--warning)')}
-      </div>
-
-      <div class="card mt-3">
-        <div class="card-header">
-          <h3 class="card-title"><span class="card-title-icon">📒</span>肌少症专项评估台账（本模块独立存储）</h3>
-          <div class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="btn btn-primary btn-sm" id="btn-new-sarc" ${patients.length ? '' : 'disabled'}>＋ 新建肌少症评估</button>
-            <a class="btn btn-ghost btn-sm" href="#/sarcopenia-stats">独立统计台账 →</a>
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="sarc-ledger-controls no-print" id="sl-controls">
-            <input id="sl-search" class="form-control" style="max-width:220px;" placeholder="搜索登记人 / 评估编号" />
-            <select id="sl-grade" class="form-control" style="max-width:170px;">${gradeOptionsHTML}</select>
-            <select id="sl-sort" class="form-control" style="max-width:190px;">
-              <option value="date-desc">评估日期（新→旧）</option>
-              <option value="date-asc">评估日期（旧→新）</option>
-              <option value="name">登记人（A→Z）</option>
-              <option value="no">评估编号</option>
-            </select>
-            <span id="sl-count" class="badge badge-info"></span>
-          </div>
-          <div id="sarc-ledger">${ledgerHTML(all)}</div>
-        </div>
-      </div>
-
-      ${focusRecords.length >= 2 ? `<div class="card mt-3">
-        <div class="card-header"><h3 class="card-title"><span class="card-title-icon">📈</span>随访复查趋势对比（${U.esc(focusName)}）</h3></div>
-        <div class="card-body">${trendHTML(focusRecords)}</div>
-      </div>` : ''}
+    const wrap = U.el(`<div class="ledger-sarc-wrap">
+      ${titleBar}
+      <div class="lw-top">${ptCardHost}</div>
+      ${bottomRowHtml}
+      ${todoDrawer}${todoFab}
     </div>`);
 
-    const btnNew = U.qs('#btn-new-sarc', wrap);
-    if (btnNew) btnNew.onclick = () => {
-      if (!patients.length) { U.toast('请先创建首诊登记', 'warning'); return; }
-      startAssess(focusId || patients[0].id);
-    };
     const btnReg = U.qs('#btn-new-reg', wrap);
     if (btnReg) btnReg.onclick = () => openRegisterModal();
 
-    setTimeout(() => { try { window.initSarcCarousel && window.initSarcCarousel(); } catch (e) { console.error('肌少症首诊轮播初始化失败', e); } }, 90);
-    setTimeout(() => { try { if (window.TodayTodo) window.TodayTodo.bindActions(wrap, [], { loadPatient: true }); } catch (e) {} }, 95);
+    setTimeout(() => { try {
+      window.initRegistryCarousel({
+        trackId: 'sr-track', stageId: 'sr-stage', prefix: 'sr', view: computeSarcPatientView(),
+        emptyText: '暂无首诊登记，点击上方「新建首诊登记」创建',
+        onOpen: (id) => { openRegisterModal(D().getPatient(id)); },
+        onAssess: (id) => { startAssess(id); },
+        onEdit: (id) => { openRegisterModal(D().getPatient(id)); },
+        onDel: (id) => { U.confirm('确认删除该首诊登记档案？其名下评估记录仍保留在台账中，可单独删除。', () => { D().removePatient(id); U.toast('已删除登记档案', 'success'); Pages.sarcopenia(); }); }
+      });
+    } catch (e) { console.error('肌少症轮播初始化失败', e); } }, 90);
+
+    setTimeout(() => { try {
+      const fab = U.qs('#lw-todo-fab', wrap); const pop = U.qs('#lw-todo-pop', wrap);
+      const backdrop = U.qs('#lw-todo-backdrop', wrap); const closeBtn = U.qs('#lw-todo-close', wrap);
+      if (fab && pop) {
+        const hide = () => { pop.classList.remove('open'); fab.classList.remove('active'); };
+        fab.onclick = (ev) => { ev.stopPropagation(); pop.classList.toggle('open'); fab.classList.toggle('active', pop.classList.contains('open')); };
+        if (backdrop) backdrop.onclick = hide;
+        if (closeBtn) closeBtn.onclick = hide;
+        if (window.addEventListener) window.addEventListener('keydown', function (e) { if (e.key === 'Escape' && pop.classList.contains('open')) hide(); });
+      }
+    } catch (e) {} }, 100);
+
+    U.qsa('.sr-rem-btn', wrap).forEach(b => b.onclick = () => startAssess(b.dataset.id));
 
     // S7：肌少症台账搜索 / 筛选 / 排序
     const ledgerEl = U.qs('#sarc-ledger', wrap);
@@ -660,10 +663,12 @@
       });
       renderLedger(arr);
     }
-    U.qs('#sl-search', wrap).addEventListener('input', applyLedgerFilter);
-    U.qs('#sl-grade', wrap).addEventListener('change', applyLedgerFilter);
-    U.qs('#sl-sort', wrap).addEventListener('change', applyLedgerFilter);
-    renderLedger(all);
+    U.qs('#sl-search', wrap)?.addEventListener('input', applyLedgerFilter);
+    U.qs('#sl-grade', wrap)?.addEventListener('change', applyLedgerFilter);
+    U.qs('#sl-sort', wrap)?.addEventListener('change', applyLedgerFilter);
+    const ledgerEl2 = U.qs('#sarc-ledger', wrap);
+    if (ledgerEl2) renderLedger(all);
+    else { /* 专项评估台账卡片已移除，此处不渲染历史台账 */ }
 
     const btnSarc2 = U.qs('#btn-sarc2', wrap);
     if (btnSarc2) btnSarc2.onclick = function () {
@@ -845,6 +850,283 @@
   }
 
   /* ==================================================================
+   * 3D 六边形能力盾视图（落地版）：真实 3D 老人 + 环绕盾牌环
+   * 盾牌 = 评估步骤，可点击跳转；青色=当前步，绿色=已完成步。
+   * 依赖 index.html 的 importmap + 本地 vendor/three（无外网）。
+   * ================================================================== */
+  function initShield3D(vizEl, opts) {
+    opts = opts || {};
+    const steps = opts.steps || [];
+    const onSelect = typeof opts.onSelect === 'function' ? opts.onSelect : function () {};
+
+    /* 自动轮转控制：盾牌环与老人模型共用同一开关；点击交互/弹窗会暂停，关闭弹窗后恢复 */
+    let autoRot = true;
+    let elderModel = null;
+    function setAutoRot(v) {
+      autoRot = !!v;
+      const onB = vizEl.querySelector('.shield3d-ctrls [data-rot="on"]');
+      const offB = vizEl.querySelector('.shield3d-ctrls [data-rot="off"]');
+      if (onB) onB.classList.toggle('is-active', autoRot);
+      if (offB) offB.classList.toggle('is-active', !autoRot);
+    }
+
+    return (async function () {
+      const THREE = await import('three');
+      const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+
+      const canvas = document.createElement('canvas');
+      canvas.className = 'shield3d-canvas';
+      vizEl.innerHTML = '';
+      vizEl.appendChild(canvas);
+      const tip = document.createElement('div');
+      tip.className = 'ac-viz-tip shield3d-tip';
+      tip.textContent = '拖拽旋转 · 点击盾牌跳转对应评估步骤；青色为当前步，绿色为已完成步。';
+      vizEl.appendChild(tip);
+
+      /* 左下角：自动轮转 / 停止轮转 控制按钮 */
+      const ctrls = document.createElement('div');
+      ctrls.className = 'shield3d-ctrls';
+      ctrls.innerHTML = '<button type="button" class="shield3d-ctrl-btn" data-rot="on" title="恢复自动轮转" aria-label="自动轮转"><span class="ic" aria-hidden="true">▶</span><span class="lbl">自动轮转</span></button>'
+        + '<button type="button" class="shield3d-ctrl-btn" data-rot="off" title="停止自动轮转" aria-label="停止轮转"><span class="ic" aria-hidden="true">⏸</span><span class="lbl">停止轮转</span></button>';
+      vizEl.appendChild(ctrls);
+      ctrls.querySelector('[data-rot="on"]').addEventListener('click', function () { setAutoRot(true); });
+      ctrls.querySelector('[data-rot="off"]').addEventListener('click', function () { setAutoRot(false); });
+      setAutoRot(true);
+
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+
+      /* 等待浏览器完成布局后再取尺寸，避免 clientWidth/Height 为 0 */
+      await new Promise(r => requestAnimationFrame(r));
+      const W0 = Math.max(320, vizEl.clientWidth || 760);
+      const H0 = Math.max(240, vizEl.clientHeight || 460);
+      renderer.setSize(W0, H0, false);
+      canvas.style.width = W0 + 'px';
+      canvas.style.height = H0 + 'px';
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.05;
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(45, W0 / H0, 0.1, 100);
+      /* 初始相机距离：后续会根据场景内容再调整 */
+      camera.position.set(0, 0.2, 5.0);
+
+      /* 灯光：默认偏暗（适配深色背景）；亮色主题下整体提亮老人模型，避免发暗 */
+      const ambient = new THREE.AmbientLight(0xffffff, 1.15); scene.add(ambient);
+      const key = new THREE.DirectionalLight(0xffffff, 0.18); key.position.set(3, 5, 4); scene.add(key);
+      const rim = new THREE.DirectionalLight(0x00d9ff, 0.08); rim.position.set(-4, 2, -4); scene.add(rim);
+      const fill = new THREE.PointLight(0x00ff9d, 0.12, 8); fill.position.set(0, -1, 2); scene.add(fill);
+
+      /* 主题联动：根据 <html data-theme> 调整亮度（亮色时提升老人可见度，暗色保持原观感） */
+      function applyThemeLighting(mode) {
+        const light = mode === 'light';
+        ambient.intensity = light ? 1.7 : 1.15;
+        key.intensity = light ? 0.6 : 0.18;
+        rim.intensity = light ? 0.18 : 0.08;
+        fill.intensity = light ? 0.4 : 0.12;
+        renderer.toneMappingExposure = light ? 1.12 : 1.05;
+      }
+      applyThemeLighting(document.documentElement.getAttribute('data-theme'));
+      let themeObs = null;
+      if (typeof MutationObserver !== 'undefined') {
+        themeObs = new MutationObserver(function () { applyThemeLighting(document.documentElement.getAttribute('data-theme')); });
+        themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+      }
+
+      const ring = new THREE.Group();
+      scene.add(ring);
+
+      /* 真实 3D 老人（失败不影响盾牌显示） */
+      const loader = new GLTFLoader();
+      loader.load('assets/elder_20260816.glb', function (gltf) {
+        const model = gltf.scene;
+        const box = new THREE.Box3().setFromObject(model);
+        const size = box.getSize(new THREE.Vector3());
+        const c = box.getCenter(new THREE.Vector3());
+        console.log('[shield3D] elder model size', size.x.toFixed(3), size.y.toFixed(3), size.z.toFixed(3));
+
+        /* 归一化：把模型包围盒最大边缩放到 3.4（标准老人身高），进一步放大主体；盾牌 R/scale 不变，仅此值决定老人大小 */
+        const maxDim = Math.max(0.001, size.x, size.y, size.z);
+        const s = 3.4 / maxDim;
+        model.position.set(-c.x * s, -c.y * s, -c.z * s);
+        model.scale.set(s, s, s);
+
+        /* 如果 y 轴远小于其他轴，模型可能是躺平的，尝试绕 X 轴立起来 */
+        if (size.y < 0.3 * maxDim) {
+          model.rotation.x = -Math.PI / 2;
+        }
+
+        /* 把老人底部对齐到 y=-1.6，盾牌环在 y=0 附近环绕（放大后比例同步） */
+        model.position.y = -1.6;
+        scene.add(model);
+        elderModel = model;   // 供动画循环让老人缓慢自转
+
+        /* 根据老人+盾牌环整体调整相机距离：修正宽屏时水平误判把相机推远导致模型变小 */
+        const halfH = 2.3, halfW = 2.15;                 // 需容纳的老人高度 / 盾牌环半径
+        const fov = camera.fov * Math.PI / 180;
+        const tanHalf = Math.tan(fov / 2);
+        const distY = halfH / tanHalf;                   // 竖直方向约束
+        const distX = halfW / (tanHalf * camera.aspect); // 水平约束（已除 aspect，避免宽屏推远）
+        camera.position.z = Math.max(distY, distX) * 1.06;
+        camera.position.y = 0;
+      }, undefined, function (err) { console.warn('[shield3D] 老人模型加载失败，仅显示盾牌环', err); });
+
+      function hexShape() {
+        const shape = new THREE.Shape();
+        const R = 0.5;
+        for (let i = 0; i < 6; i++) {
+          const a = (i * 60 - 30) * Math.PI / 180;
+          const x = Math.cos(a) * R, y = Math.sin(a) * R;
+          if (i === 0) shape.moveTo(x, y); else shape.lineTo(x, y);
+        }
+        shape.closePath();
+        return shape;
+      }
+
+      function shieldLabel(st) {
+        const c = document.createElement('canvas');
+        c.width = 512; c.height = 512;
+        const x = c.getContext('2d');
+        const g = x.createRadialGradient(256, 256, 40, 256, 256, 230);
+        g.addColorStop(0, 'rgba(6,16,36,.96)');
+        g.addColorStop(0.55, 'rgba(6,16,36,.72)');
+        g.addColorStop(0.85, 'rgba(6,16,36,.25)');
+        g.addColorStop(1, 'rgba(6,16,36,0)');
+        x.fillStyle = g; x.fillRect(0, 0, 512, 512);
+        x.textAlign = 'center'; x.textBaseline = 'middle';
+        x.font = 'bold 170px system-ui, Arial';
+        x.fillStyle = '#fff'; x.shadowColor = '#00d9ff'; x.shadowBlur = 22;
+        x.fillText(st.n, 256, 195);
+        const title = fitShieldText(x, st.t, 430, 'bold 58px system-ui, Arial');
+        x.font = title.font; x.fillStyle = '#e0f7ff';
+        x.shadowColor = '#00a8c6'; x.shadowBlur = 14;
+        x.fillText(title.text, 256, 330);
+        const tex = new THREE.CanvasTexture(c);
+        tex.anisotropy = 8;
+        const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.98, depthWrite: false, side: THREE.DoubleSide });
+        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.92, 0.92), mat);
+        mesh.position.z = 0.11;
+        mesh.renderOrder = 10;
+        return mesh;
+      }
+      function fitShieldText(ctx, text, maxW, font) {
+        ctx.font = font;
+        let fs = parseInt(font, 10);
+        while (ctx.measureText(text).width > maxW && fs > 20) { fs -= 2; ctx.font = 'bold ' + fs + 'px system-ui, Arial'; }
+        return { text, font: ctx.font };
+      }
+
+      const shields = [];
+      const R = 2.05;
+      steps.forEach(function (st, i) {
+        const grp = new THREE.Group();
+        grp.userData.step = st;
+        const ang = (i / steps.length) * Math.PI * 2;
+        const geo = new THREE.ExtrudeGeometry(hexShape(), { depth: 0.09, bevelEnabled: true, bevelThickness: 0.045, bevelSize: 0.045, bevelSegments: 4 });
+        geo.center();
+        const mat = new THREE.MeshStandardMaterial({
+          color: 0x00a8b5, roughness: 0.62, metalness: 0.04,
+          transparent: true, opacity: 0.86, emissive: 0x004d5c, emissiveIntensity: 0.24,
+          depthWrite: false
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.scale.set(0.82, 0.82, 0.82);
+        grp.add(mesh);
+
+        const loop = new THREE.BufferGeometry();
+        const pts = [];
+        for (let k = 0; k <= 6; k++) {
+          const a = (k * 60 - 30) * Math.PI / 180;
+          pts.push(Math.cos(a) * 0.52, Math.sin(a) * 0.52, 0.06);
+        }
+        loop.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+        const line = new THREE.Line(loop, new THREE.LineBasicMaterial({ color: 0x66f0ff, transparent: true, opacity: 0.7 }));
+        grp.add(line);
+
+        const lbl = shieldLabel(st);
+        grp.add(lbl);
+
+        grp.position.set(Math.sin(ang) * R, 0, Math.cos(ang) * R);
+        grp.rotation.y = ang;
+        ring.add(grp);
+        shields.push({ grp: grp, mat: mat, line: line, st: st });
+      });
+
+      function setStep(cur, maxN) {
+        maxN = maxN || cur || 1;
+        shields.forEach(function (o) {
+          const n = o.st.n;
+          const done = n < cur, isCur = n === cur;
+          if (isCur) {
+            o.mat.color.setHex(0x00d9ff); o.mat.emissive.setHex(0x006980); o.mat.emissiveIntensity = 0.5; o.mat.opacity = 0.94;
+            o.line.material.opacity = 1; o.grp.scale.setScalar(1.08);
+          } else if (done) {
+            o.mat.color.setHex(0x00c896); o.mat.emissive.setHex(0x004d3a); o.mat.emissiveIntensity = 0.34; o.mat.opacity = 0.88;
+            o.line.material.color.setHex(0x66ffd4); o.line.material.opacity = 0.85; o.grp.scale.setScalar(1);
+          } else {
+            o.mat.color.setHex(0x00a8b5); o.mat.emissive.setHex(0x004d5c); o.mat.emissiveIntensity = 0.22; o.mat.opacity = 0.82;
+            o.line.material.color.setHex(0x66f0ff); o.line.material.opacity = 0.7; o.grp.scale.setScalar(1);
+          }
+        });
+      }
+
+      const ray = new THREE.Raycaster();
+      const mouse = new THREE.Vector2();
+      let autoRot = true;
+      canvas.addEventListener('pointerdown', function () { autoRot = false; });
+      canvas.addEventListener('click', function (e) {
+        const rect = canvas.getBoundingClientRect();
+        mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        ray.setFromCamera(mouse, camera);
+        const hits = ray.intersectObjects(ring.children, true);
+        if (hits.length) {
+          let g = hits[0].object;
+          while (g.parent && g.parent !== ring) g = g.parent;
+          if (g.userData.step) onSelect(g.userData.step.n);
+        }
+      });
+
+      const clock = new THREE.Clock();
+      let raf = 0;
+      let ro = null;
+      function animate() {
+        raf = requestAnimationFrame(animate);
+        if (!document.body.contains(canvas)) {
+          cancelAnimationFrame(raf);
+          if (ro) ro.disconnect();
+          return;
+        }
+        const t = clock.getElapsedTime();
+        if (autoRot) { ring.rotation.y += 0.003; if (elderModel) elderModel.rotation.y += 0.0016; }
+        shields.forEach(function (o, i) {
+          o.grp.position.y = Math.sin(t * 0.5 + i * 0.7) * 0.018;
+          const lbl = o.grp.children.find(function (cc) {
+            return cc.material && cc.material.map && cc.material.map.image && cc.material.map.image.tagName === 'CANVAS';
+          });
+          if (lbl) lbl.lookAt(camera.position);
+        });
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      try {
+        ro = new ResizeObserver(function () {
+          const w = vizEl.clientWidth, h = vizEl.clientHeight;
+          if (w && h) { camera.aspect = w / h; camera.updateProjectionMatrix(); renderer.setSize(w, h, false); }
+        });
+        ro.observe(vizEl);
+      } catch (e) { /* ResizeObserver 可选 */ }
+
+      return {
+        setStep: setStep,
+        setAutoRot: setAutoRot,
+        dispose: function () { cancelAnimationFrame(raf); if (ro) ro.disconnect(); if (themeObs) themeObs.disconnect(); renderer.dispose(); }
+      };
+    })();
+  }
+
+  /* ==================================================================
    * 页面二：8 步标准化评估向导
    * ================================================================== */
   const STEPS = [
@@ -907,9 +1189,9 @@
     let reg = D().getPatient(base.id);
     const regName = reg ? reg.name : '';
 
-    const wrap = U.el(`<div>
+    const wrap = U.el(`<div class="sarc-assess d-holo">
       ${moduleBanner()}
-      <div class="card mb-3"><div class="card-body sarc-head">
+      <div class="card mb-3 sarc-head-card"><div class="card-body sarc-head">
         <div><span class="sarc-head-l">评估对象</span>
           <div class="sarc-head-v" id="head-name">${U.esc(base.name)}</div></div>
         <div><span class="sarc-head-l">性别 / 年龄</span>
@@ -923,7 +1205,12 @@
       </div></div>
 
       <div class="sarc-stepper" id="sarc-stepper"></div>
-      <div id="sarc-step-body"></div>
+      <div class="sarc-holo-grid">
+        <div class="sarc-viz sarc-viz-3d" id="sarc-viz"></div>
+        <div class="sarc-panel">
+          <div class="sarc-panel-inner" id="sarc-summary-body"></div>
+        </div>
+      </div>
 
       <div class="card mt-3 no-print"><div class="card-body sarc-navbar">
         <button class="btn btn-secondary" id="sarc-prev">← 上一步</button>
@@ -931,15 +1218,43 @@
           <div id="sarc-step-hint" class="sarc-hint"></div>
           ${window.SmartForm ? SmartForm.autosaveHTML('sarc-autosave', '草稿自动保存已开启') : ''}
         </div>
+        <div class="sarc-output-lamps no-print" id="sarc-output-lamps"></div>
         <button class="btn btn-primary" id="sarc-next">下一步 →</button>
       </div></div>
     </div>`);
 
-    const bodyEl = U.qs('#sarc-step-body', wrap);
+    const summaryEl = U.qs('#sarc-summary-body', wrap);
     const stepperEl = U.qs('#sarc-stepper', wrap);
     const prevBtn = U.qs('#sarc-prev', wrap);
     const nextBtn = U.qs('#sarc-next', wrap);
     const hintEl = U.qs('#sarc-step-hint', wrap);
+
+    /* 评估步骤数据填写弹窗：挂载到 document.body，确保全屏覆盖不被主容器裁剪 */
+    const oldModal = document.getElementById('sarc-modal');
+    if (oldModal) oldModal.remove();
+    const modalEl = U.el(`<div class="modal-overlay" id="sarc-modal" style="display:none;">
+      <div class="modal sarc-modal">
+        <div class="modal-header">
+          <h3 id="sarc-modal-title">评估数据填写</h3>
+          <button class="btn btn-ghost btn-sm" id="sarc-modal-close" aria-label="关闭">✕</button>
+        </div>
+        <div class="modal-body" id="sarc-modal-body"></div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="sarc-modal-prev">← 上一步</button>
+          <div class="sarc-hint" id="sarc-modal-hint"></div>
+          <button class="btn btn-primary" id="sarc-modal-save-close">💾 保存并关闭</button>
+          <button class="btn btn-primary" id="sarc-modal-next">下一步 →</button>
+        </div>
+      </div>
+    </div>`);
+    document.body.appendChild(modalEl);
+    const bodyEl = U.qs('#sarc-modal-body', modalEl);
+    const modalTitle = U.qs('#sarc-modal-title', modalEl);
+    const modalClose = U.qs('#sarc-modal-close', modalEl);
+    const modalPrev = U.qs('#sarc-modal-prev', modalEl);
+    const modalNext = U.qs('#sarc-modal-next', modalEl);
+    const modalSaveClose = U.qs('#sarc-modal-save-close', modalEl);
+    const modalHint = U.qs('#sarc-modal-hint', modalEl);
 
     /* 草稿自动保存 + 状态指示（SmartForm） */
     const autosave = window.SmartForm
@@ -1015,50 +1330,280 @@
     }
 
     function renderStepper() {
-      const maxN = S.maxStep || S.step;
-      stepperEl.innerHTML = STEPS.map(s => {
-        const st = s.n < S.step ? 'done' : (s.n === S.step ? 'cur' : 'todo');
-        const locked = s.n > maxN;
-        const tip = locked ? '尚未解锁：请先完成前序步骤' : (s.n === S.step ? '当前步骤' : '点击跳转到步骤 ' + s.n);
-        return `<div class="sarc-step ${st}" data-step="${s.n}" data-locked="${locked ? 1 : 0}" title="${U.esc(tip)}">
-          <div class="sarc-step-dot">${st === 'done' ? '✓' : (locked ? '🔒' : s.n)}</div>
-          <div class="sarc-step-t"><b>${U.esc(s.t)}</b><span>${s.i} 步骤 ${s.n}</span></div>
-        </div>`;
-      }).join('');
-      U.qsa('.sarc-step', stepperEl).forEach(d => d.onclick = () => {
-        const target = parseInt(d.dataset.step, 10);
-        if (target === S.step) return;
-        if (d.dataset.locked === '1') {
-          U.toast(`步骤 ${target} 尚未解锁，请先按顺序完成步骤 ${(S.maxStep || S.step)} 及之前的内容`, 'warning');
-          return;
-        }
-        S.step = target; render();
-      });
+      /* 用户要求取消顶部流程进度栏，保留函数占位，后续可恢复 */
+      if (stepperEl) stepperEl.innerHTML = '';
+    }
+
+    function stepSummaryHTML(k) {
+      const s = STEPS[k - 1];
+      const pct = stepProgress(k);
+      return `<div class="sarc-summary-card">
+        <div class="sarc-summary-icon">${s.i}</div>
+        <div class="sarc-summary-main">
+          <div class="sarc-summary-step">步骤 ${k} / ${STEPS.length}</div>
+          <h3 class="sarc-summary-title">${U.esc(s.t)}</h3>
+          <div class="sarc-summary-progress"><div class="sarc-summary-bar" style="width:${pct}%"></div></div>
+          <div class="sarc-summary-meta">${stepFilledCount(k)} 项已填写 / ${stepTotalCount(k)} 项</div>
+        </div>
+      </div>
+      <div class="sarc-summary-desc">${stepDescription(k)}</div>
+      <button class="btn btn-primary btn-block mt-3" id="btn-open-sarc-modal">📝 填写本步骤数据</button>`;
+    }
+
+    function openStepModal() {
+      modalEl.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+      renderModalBody();
+      setTimeout(() => { const first = U.qs('input,select,textarea,button', bodyEl); if (first) first.focus(); }, 50);
+    }
+    function closeStepModal() {
+      modalEl.style.display = 'none';
+      document.body.style.overflow = '';
+      /* 填写完成/关闭弹窗后，恢复 3D 自动轮转（盾牌环 + 老人） */
+      if (wrap._shield3DInst && wrap._shield3DInst.setAutoRot) wrap._shield3DInst.setAutoRot(true);
+    }
+    function renderModalBody() {
+      const k = S.step;
+      modalTitle.textContent = `步骤 ${k} · ${STEPS[k - 1].t}`;
+      modalHint.textContent = `${STEPS[k - 1].i}  ${k}/${STEPS.length}`;
+      bodyEl.innerHTML = stepHTML(k);
+      bindStep(k);
+
+      /* —— 智能表单增强（SmartForm）—— */
+      if (window.SmartForm) {
+        SmartForm.collapsibleCards(bodyEl);
+        const rules = RANGE_RULES[k];
+        if (rules) stepValidator = SmartForm.bindRanges(bodyEl, rules);
+        if (S._flash && S._flash.length) { SmartForm.flash(bodyEl, S._flash); S._flash = null; }
+      }
+      modalPrev.style.visibility = k === 1 ? 'hidden' : 'visible';
+      modalNext.textContent = k === 10 ? '完成并返回台账' : '下一步 →';
     }
 
     function render() {
       S.maxStep = Math.max(S.maxStep || 1, S.step);
       stepValidator = null;
       renderStepper();
-      bodyEl.innerHTML = stepHTML(S.step);
-      bindStep(S.step);
+      summaryEl.innerHTML = stepSummaryHTML(S.step);
+      const openBtn = U.qs('#btn-open-sarc-modal', summaryEl);
+      if (openBtn) openBtn.onclick = openStepModal;
+      /* 方案要求：点击右侧「路径」整卡即弹全屏数据填写窗口 */
+      const pathCard = U.qs('.sarc-summary-card', summaryEl);
+      if (pathCard) pathCard.onclick = function (e) {
+        if (e.target.closest('#btn-open-sarc-modal')) return; // 按钮自身已绑定，避免重复
+        openStepModal();
+      };
 
-      /* —— 智能表单增强（SmartForm）—— */
-      if (window.SmartForm) {
-        /* 1) 分节折叠 + 完成度徽标（默认全部展开，分节 ≥3 时自动挂折叠工具条） */
-        SmartForm.collapsibleCards(bodyEl);
-        /* 2) 字段范围即时校验（保留输入内容，仅高亮 + 气泡提示） */
-        const rules = RANGE_RULES[S.step];
-        if (rules) stepValidator = SmartForm.bindRanges(bodyEl, rules);
-        /* 3) 上传 / 蓝牙回填字段高亮 */
-        if (S._flash && S._flash.length) { SmartForm.flash(bodyEl, S._flash); S._flash = null; }
-      }
+      /* 刷新弹窗内表单（弹窗打开状态下跟随步骤切换） */
+      if (modalEl.style.display === 'flex') renderModalBody();
 
       prevBtn.style.visibility = S.step === 1 ? 'hidden' : 'visible';
       nextBtn.textContent = S.step === 10 ? '完成并返回台账' : '下一步 →';
-      hintEl.textContent = `步骤 ${S.step} / 9 · ${STEPS[S.step - 1].t}`;
+      hintEl.textContent = `步骤 ${S.step} / ${STEPS.length} · ${STEPS[S.step - 1].t}`;
+      const lampsEl = U.qs('#sarc-output-lamps', wrap);
+      if (lampsEl) {
+        let computed = null; try { computed = compute(); } catch (e) { computed = null; }
+        const hasReport = !!computed && S.step >= 7;
+        const hasPlan = !!computed && S.step >= 8 && !!(computed && computed.plan);
+        lampsEl.innerHTML = `<span class="ol-blk${hasReport ? ' on' : ''}"><i class="ol-dot"></i>评估报告${hasReport ? ' ✓' : ''}</span>`
+          + `<span class="ol-blk${hasPlan ? ' on' : ''}"><i class="ol-dot"></i>推荐方案${hasPlan ? ' ✓' : ''}</span>`;
+      }
+      renderViz(S);
       saveDraft();
-      bodyEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function stepProgress(k) {
+      const [filled, total] = stepCounts(k);
+      return total ? Math.round((filled / total) * 100) : 0;
+    }
+    function stepFilledCount(k) { return stepCounts(k)[0]; }
+    function stepTotalCount(k) { return stepCounts(k)[1]; }
+    function stepCounts(k) {
+      let filled = 0, total = 0;
+      const has = (v) => v != null && v !== '' && (typeof v !== 'object' || Object.keys(v).length > 0);
+      const countObj = (o, keys) => { keys.forEach(key => { total++; if (has(o && o[key])) filled++; }); };
+      switch (k) {
+        case 1:
+          E().CONTRA_ITEMS.forEach(it => { total++; if (S.contra[it.key] != null) filled++; });
+          break;
+        case 2:
+          countObj(S, ['scene', 'hasDevice']);
+          countObj(S.exam, ['sbp', 'dbp', 'standSbp', 'standDbp', 'hba1c', 'visionLeft', 'visionRight']);
+          countObj(S.health, ['fallHistory', 'fallCount', 'useAid', 'aidType', 'weightLoss', 'weightLossKg', 'boneDensity', 'pain', 'painArea', 'drugCount', 'supplementCount', 'calcium', 'vitD', 'diseases']);
+          countObj(S.exercise, ['frequency', 'types', 'place', 'weather', 'winter']);
+          break;
+        case 3:
+          countObj(S, ['calf', 'grip', 'gait', 'balanceKey', 'chairSec', 'chairCannot', 'cfs']);
+          countObj(S.body, ['smi', 'bodyFat', 'visceral', 'muscleMass', 'bmr', 'weight']);
+          break;
+        case 4:
+          E().SARCF_ITEMS.forEach(it => { total++; if (S.sarcf[it.key] != null) filled++; });
+          E().LIFE_SECTIONS.forEach(sec => sec.items.forEach(it => { total++; if (S.life[it.key] != null) filled++; }));
+          E().MNA_SF_ITEMS.forEach(it => { total++; if (S.mnasf[it.key] != null) filled++; });
+          E().AMT_ITEMS.forEach(it => { total++; if (S.amt[it.key] != null) filled++; });
+          E().FEAR_FALL_ITEMS.forEach(it => { total++; if (S.fearFall[it.key] != null) filled++; });
+          break;
+        case 5: total = 1; if (S.result != null) filled = 1; break;
+        case 6: total = 1; if (S.result != null) filled = 1; break;
+        case 7: total = 1; if (S.result != null) filled = 1; break;
+        case 8: total = 1; if (S.result != null && S.result.plan) filled = 1; break;
+        case 9: total = 1; if (S.health && S.health.fallHistory != null) filled = 1; break;
+        case 10: total = 1; if (S.saved) filled = 1; break;
+      }
+      return [filled, Math.max(1, total)];
+    }
+    function stepDescription(k) {
+      const map = {
+        1: '先确认本次评估是否存在禁忌症或年龄不符，确保受试者安全。',
+        2: '同步首诊登记的基础信息、医学体检、健康史与运动习惯。',
+        3: '录入小腿围、握力、4 米步速、五次坐立、平衡测试、体成分等客观指标。',
+        4: '完成 SARC-F、生活方式、MNA-SF、AMT、害怕跌倒等量表。',
+        5: '系统根据已录入指标自动计算 SMI、握力、步速、SPPB 等评分。',
+        6: '基于 AWGS2019/2014 标准判定肌少症分期与风险等级。',
+        7: '查看并确认评估报告，可打印或申请 AI 解读。',
+        8: '查看推荐的营养补充、运动干预与随访方案。',
+        9: '评估 Morse、TUGT、跌倒史等跌倒风险因素。',
+        10: '确认评估结果并纳入台账，安排随访计划。'
+      };
+      return map[k] || '';
+    }
+
+    // ---- 评估可视化增强：真实人体图 + 六维风险雷达（不破坏 10 步向导业务逻辑）----
+    // ---- 评估可视化增强：真实 3D 老人 + 六边形能力盾环（落地版，保留 10 步向导业务逻辑）----
+    function renderLegacyViz(S, vizEl) {
+      vizEl.className = 'sarc-viz';
+      vizEl.innerHTML = '';
+      const gender = base ? base.gender : 'male';
+      const atlas = AssessCockpit.buildAtlas(SARC_REGIONS(S, gender), { mode: 'back', frontImg: 'assets/body-front.png', backImg: 'assets/body-back.png' });
+      atlas.querySelectorAll('.ac-anchor').forEach(function (a) {
+        a.onclick = function () {
+          const t = ANCHOR_STEP[a.dataset.rid];
+          if (t) { S.step = t; render(); U.toast('已定位到步骤 ' + t + '：' + STEPS[t - 1].t, 'info'); }
+        };
+      });
+      vizEl.appendChild(atlas);
+      vizEl.appendChild(AssessCockpit.buildRadar(sarcRadar(S, gender)));
+      const tip = document.createElement('div');
+      tip.className = 'ac-viz-tip';
+      tip.textContent = '点击人体锚点可跳转到对应录入步骤；右侧为六维风险雷达（肌量 / 握力 / 步速 / 起坐 / 平衡 / 跌倒）。';
+      vizEl.appendChild(tip);
+    }
+
+    const supportsImportMap = (function () {
+      try { return HTMLScriptElement.supports('importmap'); } catch (e) { return false; }
+    })();
+
+    function renderViz(S) {
+      try {
+        const vizEl = U.qs('#sarc-viz', wrap);
+        if (!vizEl || !window.AssessCockpit) return;
+
+        /* 浏览器不支持 importmap 时降级为传统 atlas+雷达，保证业务可用 */
+        if (!supportsImportMap) {
+          renderLegacyViz(S, vizEl);
+          return;
+        }
+
+        vizEl.className = 'sarc-viz sarc-viz-3d';
+
+        /* 同一挂载实例只初始化一次；后续仅更新高亮状态 */
+        if (!wrap._shield3DInst) {
+          wrap._shield3DInst = { ready: false };
+          const loading = document.createElement('div');
+          loading.className = 'shield3d-loading';
+          loading.textContent = '正在加载 3D 评估视图…';
+          vizEl.appendChild(loading);
+          initShield3D(vizEl, {
+            steps: STEPS,
+            onSelect: function (n) {
+              if (n === S.step) { openStepModal(); return; }
+              const maxN = S.maxStep || S.step;
+              if (n > maxN) { U.toast('步骤 ' + n + ' 尚未解锁，请先完成前序步骤', 'warning'); return; }
+              S.step = n; render(); openStepModal();
+            }
+          }).then(function (inst) {
+            if (loading.parentNode) loading.remove();
+            wrap._shield3DInst = inst;
+            inst.setStep(S.step, S.maxStep);
+          }).catch(function (err) {
+            console.error('[shield3D] init failed, fallback to legacy viz', err);
+            renderLegacyViz(S, vizEl);
+            const tip = document.createElement('div');
+            tip.className = 'ac-viz-tip';
+            tip.style.cssText = 'padding:10px 14px;color:#ff9aa2;background:rgba(20,10,10,.45);border-radius:8px;margin-top:8px';
+            tip.textContent = '3D 盾牌视图加载失败，已降级为传统视图。错误：' + (err && err.message ? err.message : err);
+            vizEl.appendChild(tip);
+          });
+          return;
+        }
+        if (wrap._shield3DInst.setStep) wrap._shield3DInst.setStep(S.step, S.maxStep);
+      } catch (e) {
+        console.error('[sarcViz] render error', e);
+      }
+    }
+    function SARC_REGIONS(S, gender) {
+      return [
+        { id: 'head', label: '头 / 认知', icon: '🧠', x: 50, y: 11, risk: 'na', summary: '认知 / 营养' },
+        { id: 'arm', label: '上肢 / 握力', icon: '💪', x: 30, y: 38, risk: sarcGripLevel(S, gender), summary: '握力' },
+        { id: 'core', label: '核心 / 肌量', icon: '🔥', x: 50, y: 50, risk: sarcMassLevel(S, gender), summary: '骨骼肌量 / SMI' },
+        { id: 'leg', label: '下肢 / 步速', icon: '🦵', x: 50, y: 84, risk: sarcGaitLevel(S), summary: '步速 / 平衡 / 起坐' }
+      ];
+    }
+    const ANCHOR_STEP = { head: 4, arm: 3, core: 3, leg: 3 };
+    function sarcGripLevel(S, gender) {
+      const g = U.num(S.grip); if (!g) return 'na';
+      const cut = gender === 'female' ? 18 : 28;
+      return g < cut ? 'high' : (g < cut + 4 ? 'mid' : 'low');
+    }
+    function sarcMassLevel(S, gender) {
+      const smi = U.num(S.body && S.body.smi); const mm = U.num(S.body && S.body.muscleMass);
+      if (smi) { const cut = gender === 'female' ? 5.7 : 7.0; return smi < cut ? 'high' : (smi < cut + 1 ? 'mid' : 'low'); }
+      if (mm) return mm < (gender === 'female' ? 15 : 20) ? 'mid' : 'low';
+      return 'na';
+    }
+    function sarcGaitLevel(S) {
+      const v = U.num(S.gait); if (!v) return 'na';
+      return v <= 0.8 ? 'high' : (v <= 1.0 ? 'mid' : 'low');
+    }
+    function sarcMassLabel(S, gender) {
+      const smi = U.num(S.body && S.body.smi);
+      if (smi) return smi < (gender === 'female' ? 5.7 : 7.0) ? '下降' : '正常';
+      const mm = U.num(S.body && S.body.muscleMass);
+      if (mm) return mm < (gender === 'female' ? 15 : 20) ? '偏低' : '正常';
+      return '未录';
+    }
+    function balanceLabel(S) { const k = S.balanceKey; if (!k) return '未录'; if (/无法|极差/.test(k)) return '异常'; return k; }
+    function balanceLevel(S) {
+      const k = S.balanceKey; if (!k) return 'na';
+      if (/无法|极差/.test(k)) return 'high'; if (/差/.test(k)) return 'mid'; return 'low';
+    }
+    function fallLabel(S) {
+      const h = S.health || {};
+      if (h.fallHistory === 'yes' || h.fallHistory === true) return '有史';
+      if (U.num(h.fallCount) > 0) return '有史';
+      return '无';
+    }
+    function fallLevel(S) {
+      const h = S.health || {};
+      if (h.fallHistory === 'yes' || h.fallHistory === true) return 'high';
+      if (U.num(h.fallCount) > 0) return 'mid';
+      return 'low';
+    }
+    function sarcRadar(S, gender) {
+      const dims = [
+        { name: '肌量', label: sarcMassLabel(S, gender), level: sarcMassLevel(S, gender) },
+        { name: '握力', label: S.grip ? (U.num(S.grip) + 'kg') : '未录', level: sarcGripLevel(S, gender) },
+        { name: '步速', label: S.gait ? (U.num(S.gait) + 'm/s') : '未录', level: sarcGaitLevel(S) },
+        { name: '起坐', label: S.chairCannot ? '无法完成' : (S.chairSec ? (U.num(S.chairSec) + 's') : '未录'), level: S.chairCannot ? 'high' : (S.chairSec ? (U.num(S.chairSec) > 12 ? 'mid' : 'low') : 'na') },
+        { name: '平衡', label: balanceLabel(S), level: balanceLevel(S) },
+        { name: '跌倒', label: fallLabel(S), level: fallLevel(S) }
+      ];
+      const worst = dims.reduce(function (w, d) {
+        if (d.level === 'high') return 'high';
+        if (d.level === 'mid') return w === 'high' ? 'high' : 'mid';
+        return w;
+      }, 'low');
+      return { overall: worst, dims: dims };
     }
 
     /* ---------- 各步骤 HTML ---------- */
@@ -1491,7 +2036,7 @@
           const rec = buildRecord(R);
           return `<div class="card">
             <div class="card-header">
-              <h3 class="card-title"><span class="card-title-icon">📄</span>步骤 7 · 肌少症专项评估报告</h3>
+              <h3 class="card-title"><span class="card-title-icon">📄</span>步骤 7 · 肌少症专项评估报告（产出物 #1）</h3>
               <div class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;">
                 <button class="btn btn-ghost btn-sm btn-share-sarc-qr" data-from="step7">📲 扫码查看</button>
                 <button class="btn btn-primary btn-sm" id="btn-print-assessment">打印 / 导出评估报告</button>
@@ -1524,8 +2069,8 @@
           const isAI = view === 'ai';
           return `<div>
             <div class="alert alert-info" style="margin-bottom:16px;">
-              <div><strong>方案推荐（基于步骤 7 评估报告）</strong><p style="margin:6px 0 0;font-size:13px;line-height:1.75;">
-                系统依据评估报告的综合判定，自动生成个性化<b>干预方案</b>。当前首选：
+              <div><strong>步骤 8 · 干预推荐方案（产出物 #2，本步即完整版）</strong><p style="margin:6px 0 0;font-size:13px;line-height:1.75;">
+                系统依据评估报告的综合判定，自动生成个性化<b>干预方案</b>，已在本步内完整呈现：运动处方（徒手 / 鹊动设备）、饮食营养、有氧安排与建议周训练节律，<b>无需跳转其他页</b>。当前首选：
                 <b>${pref.prefer === 'home' ? '老年徒手训练方案' : '鹊动设备训练方案'}</b>；可切换首选、编辑动作，或单独打印 / 导出本方案。<br>
                 右上角可在<b>标准版</b>（双版本对照，供打印交付）、<b>严谨版</b>（AWGS 严重度分级 + 客观剂量 + 禁忌网关 + 逐条依据）与<b>鹊动小Qoo AI 方案推荐</b>之间切换。</p></div>
             </div>
@@ -1576,13 +2121,11 @@
               </div></div>
 
             <div class="card mt-3"><div class="card-header">
-              <h3 class="card-title"><span class="card-title-icon">🔗</span>步骤 8 · 跨方向协同入口</h3></div>
+              <h3 class="card-title"><span class="card-title-icon">🍽️</span>步骤 8 · 方案配套（饮食营养 / 建议周节律）</h3></div>
               <div class="card-body">
-                <p style="margin:0 0 12px;font-size:13px;line-height:1.75;">肌少症方案已涵盖核心运动处方。跌倒预防与饮食营养现由独立方向承接，可一键跳转，避免在同一页面交叉混杂：</p>
-                <div style="display:flex;gap:12px;flex-wrap:wrap;">
-                  <a class="btn btn-outline btn-sm" href="#/plan">🍽️ 查看体重管理饮食与生活方式方案 →</a>
-                </div>
-                <div class="alert alert-info" style="margin-top:14px;">
+                ${plan.diet && plan.diet.length ? `<div class="sarc-kv" style="margin:0 0 12px;"><span>饮食营养</span><table class="sarc-diet-tbl"><tbody>${plan.diet.map(x => `<tr><td><b>${U.esc(x[0])}</b></td><td>${U.esc(x[1])}</td></tr>`).join('')}</tbody></table></div>` : ''}
+                <div class="sarc-kv" style="margin:0 0 12px;"><span>建议周训练节律</span><p>抗阻训练 2–3 次/周（徒手或鹊动设备，隔日进行）；有氧 3–5 次/周（快走 / 太极 / 慢骑，微微出汗）；每日穿插平衡与柔韧练习；保证至少 1 天完全休息。具体可据体力在手机端打卡页调整。</p></div>
+                <div class="alert alert-info" style="margin-top:4px;">
                   <div><strong>提示</strong><p style="margin:6px 0 0;font-size:13px;">跌倒风险评估已融入本流程的步骤 9，请继续「下一步 →」完成。</p></div>
                 </div>
                 <div class="alert alert-success" style="margin-top:16px;">
@@ -1599,6 +2142,7 @@
             <h3 class="card-title"><span class="card-title-icon">🛡️</span>步骤 9 · 跌倒风险评估（已融入肌少症-跌倒风险流程）</h3></div>
             <div class="card-body">
               ${tipBox('步骤说明', '跌倒风险评估已融入本肌少症标准化评估流程。下方依次完成 F1 跌倒史 / F2 平衡功能 / F3 步态移动 / F4 感觉认知环境 / F5 风险报告与预防方案 共 5 个子步骤；完成后点击「下一步 →」继续纳入台账随访。')}
+              <div id="sarc-prereq-box"></div>
               <div id="sarc-fall-host"></div>
             </div></div>`;
         }
@@ -1633,7 +2177,7 @@
 
               <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:18px;" class="no-print">
                 <button class="btn btn-primary btn-lg" id="btn-save-sarc">${S.saved ? '更新归档记录' : '✓ 归档并纳入台账'}</button>
-                <button class="btn btn-secondary btn-lg" id="btn-print-final">打印 / 导出报告</button>
+                <button class="btn btn-secondary btn-lg" id="btn-print-final">打印 / 导出 · 合并总报告（评估 + 方案 + 跌倒）</button>
                 <a class="btn btn-ghost btn-lg" href="#/sarcopenia">返回独立台账</a>
               </div>
 
@@ -2080,6 +2624,12 @@
             host.innerHTML = '<div class="alert alert-danger">嵌入跌倒风险评估失败：' + U.esc(e.message || String(e)) + '</div>';
           }
         }
+        /* 第九步前置自检面板：进入跌倒风险评估前，提示肌少症流程前序必填项与结果有效性缺口 */
+        const preq = U.qs('#sarc-prereq-box', bodyEl);
+        if (preq) {
+          try { preq.innerHTML = sarcStep9PrereqHTML(S, base); }
+          catch (e) { console.error('[sarcopenia step 9 前置自检失败]', e); }
+        }
       }
 
       if (k === 10) {
@@ -2329,8 +2879,62 @@
       return true;
     }
 
-    prevBtn.onclick = () => { if (S.step > 1) { S.step--; render(); } };
-    nextBtn.onclick = () => {
+    /* ---------- 第九步前置自检面板（进入跌倒风险评估前的必填项与结果有效性提示） ---------- */
+    function sarcStep9PrereqHTML(st, patient) {
+      const eng = E();
+      const row = (it) => `<li><span class="pi ${it.ok ? 'ok' : 'miss'}">${it.ok ? '✓' : '✗'}</span><span class="pt"><b>${U.esc(it.label)}</b>${it.dtl ? ` · <span class="pm">${U.esc(it.dtl)}</span>` : ''}</span></li>`;
+      /* 硬闸：步骤 1 禁忌筛查 */
+      const c = eng.evalContra(st.contra || {}, patient.age);
+      const contraAnswered = eng.CONTRA_ITEMS.every(it => typeof (st.contra || {})[it.key] === 'boolean');
+      let contraOk = true, contraMsg = '已全答且无禁忌命中、年龄合规';
+      if (!contraAnswered) { contraOk = false; contraMsg = '尚有禁忌筛查项未作答'; }
+      else if (c.hit.length) { contraOk = false; contraMsg = '检出评估禁忌：' + c.hit.map(h => h.label).join('、') + '（须终止测评）'; }
+      else if (!c.ageOk) { contraOk = false; contraMsg = '年龄不合规：' + c.ageMsg; }
+      /* 硬闸：步骤 3 客观指标 */
+      const calf = eng.num(st.calf), grip = eng.num(st.grip), gait = eng.num(st.gait);
+      const objCount = [calf, grip, gait].filter(v => v != null).length;
+      const objMiss = []; if (gait == null) objMiss.push('4 米步速'); if (grip == null) objMiss.push('握力'); if (calf == null) objMiss.push('小腿围');
+      const objOk = objCount > 0;
+      const objMsg = objOk ? ('已录入 ' + objCount + '/3 项' + (objMiss.length ? ('，建议补录：' + objMiss.join('、')) : '')) : '三项均未录入（须至少一项）';
+      /* 硬闸：步骤 4 SARC-F */
+      const sf = eng.evalSarcF(st.sarcf || {});
+      /* 结果有效性（软）：客观 + 问卷 + SPPB + 衰弱 */
+      const h = st.health || {};
+      const mnaDone = eng.MNA_SF_ITEMS.every(it => st.mnasf && st.mnasf[it.key] != null);
+      const amtDone = eng.AMT_ITEMS.every(it => st.amt && st.amt[it.key] != null);
+      const soft = [
+        { ok: gait != null, label: '4 米步速', dtl: gait != null ? '已录入' : '未录入（SPPB / 跌倒指数核心）' },
+        { ok: grip != null, label: '握力', dtl: grip != null ? '已录入' : '未录入' },
+        { ok: calf != null, label: '小腿围', dtl: calf != null ? '已录入' : '未录入' },
+        { ok: h.fallHistory != null && h.fallHistory !== '', label: '跌倒史（健康问卷）', dtl: (h.fallHistory != null && h.fallHistory !== '') ? '已录入' : '未录入' },
+        { ok: !!st.balanceKey, label: '平衡功能（SPPB）', dtl: st.balanceKey ? '已录入' : '未录入' },
+        { ok: !!(st.chairSec || st.chairCannot), label: '起坐计时（SPPB）', dtl: (st.chairSec || st.chairCannot) ? '已录入' : '未录入' },
+        { ok: !!st.cfs, label: '临床衰弱评分 CFS', dtl: st.cfs ? '已录入' : '未录入' },
+        { ok: mnaDone, label: '营养筛查 MNA-SF', dtl: mnaDone ? '已全答' : '尚有题目未作答' },
+        { ok: amtDone, label: '认知筛查 AMT', dtl: amtDone ? '已全答' : '尚有题目未作答' }
+      ];
+      const gate = [
+        { ok: contraOk, label: '步骤 1 禁忌筛查', dtl: contraMsg },
+        { ok: objOk, label: '步骤 3 客观指标', dtl: objMsg },
+        { ok: sf.complete, label: '步骤 4 SARC-F 问卷', dtl: sf.complete ? '5 题已全答' : '尚有题目未作答' }
+      ];
+      const gateMiss = gate.filter(i => !i.ok).length;
+      const banner = gateMiss === 0
+        ? '<li><span class="pi ok">✓</span><span class="pt"><b>前置已全部达标</b><span class="pm">，可正常进行第九步跌倒风险评估</span></span></li>'
+        : '<li><span class="pi miss">!</span><span class="pt"><b>有 ' + gateMiss + ' 项前置未达标</b><span class="pm">，将无法通过「下一步」或导致结果无效，请返回补齐</span></span></li>';
+      const softMiss = soft.filter(i => !i.ok).length;
+      const softNote = softMiss === 0 ? '结果有效性数据均已齐备' : ('有 ' + softMiss + ' 项未录入，最终跌倒风险指数与方案精度会受影响');
+      return `<div class="card sarc-prereq-card"><div class="card-body" style="padding:14px 16px;">
+        <div class="sarc-prereq-h">📋 第九步前置自检 · 进入跌倒风险评估前必查</div>
+        <ul class="sarc-prereq-gate">${banner}</ul>
+        <ul class="sarc-prereq-list">${gate.map(row).join('')}</ul>
+        <div class="sarc-prereq-sub">结果有效性（非拦截项 · 影响最终跌倒风险指数与方案质量）· ${softNote}</div>
+        <ul class="sarc-prereq-list">${soft.map(row).join('')}</ul>
+      </div></div>`;
+    }
+
+    function goPrev() { if (S.step > 1) { S.step--; render(); } }
+    function goNext() {
       if (S.step === 10) {
         if (!S.saved) { U.toast('请先点击「归档并纳入台账」保存本次评估', 'warning'); return; }
         D().clearDraft();
@@ -2341,7 +2945,28 @@
       S.step++;
       S.maxStep = Math.max(S.maxStep || 1, S.step);
       render();
+    }
+    if (prevBtn) prevBtn.onclick = goPrev;
+    if (nextBtn) nextBtn.onclick = goNext;
+
+    if (modalClose) modalClose.onclick = closeStepModal;
+    if (modalPrev) modalPrev.onclick = goPrev;
+    if (modalNext) modalNext.onclick = goNext;
+    if (modalSaveClose) modalSaveClose.onclick = function () {
+      if (stepValidator) {
+        const errs = stepValidator.errors();
+        if (errs.length) {
+          stepValidator.focusFirstError();
+          U.toast(`有 ${errs.length} 项数据超出合理范围，请修正后再保存`, 'error');
+          return;
+        }
+      }
+      saveDraft(); render(); closeStepModal(); U.toast('当前步骤数据已保存', 'success');
     };
+    if (modalEl) modalEl.onclick = (e) => { if (e.target === modalEl) closeStepModal(); };
+    document.addEventListener('keydown', function escClose(e) {
+      if (e.key === 'Escape' && modalEl.style.display === 'flex') closeStepModal();
+    });
 
     /* 演示数据 */
     U.qs('#btn-demo-sarc', wrap).onclick = () => {
@@ -2715,9 +3340,9 @@
   window.buildSarcPlanReport = function (rec) {
     const { R, d, f, plan, orgName, sysName, sec, rowsMetric, sarcSec, summaryPanel } = sarcReportCtx(rec);
     return `<div class="report-doc sarc-doc sarc-plan-vscroll" data-scope="sarcopenia">
-      <img class="report-mascot" src="assets/qoo.png" alt="" onerror="this.remove()">
+      <img class="report-mascot no-print" src="assets/qoo.png" alt="" onerror="this.remove()">
       ${summaryPanel()}
-      ${sarcSec('十', '个性化运动干预方案', '🏃', plan.home ? `
+      ${sarcSec('七', '个性化运动干预方案', '🏃', plan.home ? `
         <p><b>系统首选：</b>${plan.prefer && plan.prefer.prefer === 'home' ? '老年徒手训练方案（居家零设备）' : '鹊动设备训练方案（机构量化）'}
         　<b>推荐依据：</b>${U.esc(((plan.prefer || {})[plan.prefer && plan.prefer.prefer === 'home' ? 'homeReasons' : 'deviceReasons'] || []).join('、'))}</p>
         <div class="report-ex-card" style="border-left:4px solid var(--primary);">
@@ -2740,7 +3365,7 @@
         <div class="report-ex-card"><b>有氧安排</b><p>${U.esc(plan.aerobic || '')}</p></div>
         <div class="report-ex-card"><b>双方案统一适配原则</b><p>${(plan.principles || []).map(x => U.esc(x)).join('；')}</p></div>` : '')}
 
-      ${sarcSec('十一', '独立跌倒预防专项方案', '🛡️', plan.fall ? `
+      ${sarcSec('八', '独立跌倒预防专项方案', '🛡️', plan.fall ? `
         <p><b>执行等级：</b>${U.esc(plan.fall.level)}（指数 ${plan.fall.index} 分）　
         <b>频次：</b>${U.esc(plan.fall.tier.freq)}　<b>目标：</b>${U.esc(plan.fall.tier.aim)}</p>
         ${plan.fall.priority ? '<p style="color:#dc2626;"><b>⚠️ 高风险人群，须优先执行跌倒预防方案，风险下降后再叠加增肌 / 减脂训练。</b></p>' : ''}
@@ -2758,14 +3383,14 @@
         <div class="report-ex-card"><b>跌倒预防专属生活方式干预</b>
           <p>${plan.fall.lifestyle.map(x => U.esc(x)).join('；')}</p></div>` : '')}
 
-      ${sarcSec('十二', '饮食营养与生活方式干预', '🍽️', plan.diet ? `
+      ${sarcSec('九', '饮食营养与生活方式干预', '🍽️', plan.diet ? `
         <table class="data-table" style="width:100%;">
           <thead><tr><th style="width:180px;">维度</th><th>执行标准</th></tr></thead>
           <tbody>${plan.diet.map(x => `<tr><td><b>${U.esc(x[0])}</b></td><td>${U.esc(x[1])}</td></tr>`).join('')}</tbody></table>
         <div class="report-ex-card" style="margin-top:12px;"><b>生活方式干预</b>
           <p>${(plan.lifestyle || []).map(x => U.esc(x)).join('；')}</p></div>` : '')}
 
-      ${sarcSec('十三', '复查与随访安排', '📅', `
+      ${sarcSec('十', '复查与随访安排', '📅', `
         <p><b>建议复查日期：</b>${U.esc(rec.reviewDate || plan.reviewDate || '—')}
         （间隔 ${plan.reviewDays || 90} 天）</p>
         <p style="margin-top:8px;"><b>复查项目：</b>小腿围、握力、4 米步速、体成分（SMI / 体脂率 / 内脏脂肪）、SPPB 躯体功能、CFS 衰弱分级、SARC-F 问卷、MNA-SF 营养评估、AMT 精神状态、跌倒关注程度量表。</p>

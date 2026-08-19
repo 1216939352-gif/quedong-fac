@@ -321,41 +321,43 @@
         <p style="font-size:13px;color:var(--text-muted);">本模块拥有独立首诊登记档案，不共享系统用户档案；请点击下方按钮创建第一位老人的独立登记。</p>
       </div>`;
 
-    const wrap = U.el(`<div>
-      ${patientBar()}
-      ${moduleBanner()}
-
-      <div class="card mt-3">
-        <div class="card-header">
-          <h3 class="card-title"><span class="card-title-icon">🪪</span>肌少症专项 · 首诊登记名册（独立档案，不共享系统用户档案）</h3>
-          <div class="no-print"><button class="btn btn-primary btn-sm" id="btn-new-reg">＋ 新建首诊登记</button></div>
-        </div>
-        <div class="card-body">${pcards}</div>
+    const ledgerStyle = (window.Skin && Skin.state && Skin.state.ledgerStyle) || 'cockpit';
+    const todoCard = (typeof ttCard === 'function') ? ttCard('sarc') : (window.ttCard ? window.ttCard('sarc') : '');
+    const execCard = (window.TrainingExecution && window.TrainingExecution.ledgerCard) ? window.TrainingExecution.ledgerCard('sarc') : '';
+    const titleBar = `<div class="ledger-titlebar"><span class="lt-ico">🧓</span><h1>肌少症与跌倒风险台账</h1><span class="lt-sub">独立档案</span><span class="lt-badge">${patients.length} 人登记</span></div>`;
+    const rosterCard = `<div class="card mt-3">
+      <div class="card-header">
+        <h3 class="card-title"><span class="card-title-icon">🪪</span>首诊登记名册 · 评估台账（合并）</h3>
+        <div class="no-print"><button class="btn btn-primary btn-sm" id="btn-new-reg">＋ 新建首诊登记</button></div>
       </div>
+      <div class="card-body">${pcards}${ledgerHTML(all)}</div>
+    </div>`;
+    const statRow = `<div class="sarc-stat-row">
+      ${statMini('首诊登记人数', patients.length, '人', 'var(--primary)')}
+      ${statMini('模块累计评估', all.length, '次', 'var(--info)')}
+      ${statMini('最近评估日期', all.length ? all.slice().sort((a, b) => new Date(b.assessDate || 0) - new Date(a.assessDate || 0))[0].assessDate : '—', '', 'var(--success)')}
+      ${statMini('下次复查建议', focusRecords[0] && focusRecords[0].result && focusRecords[0].result.plan ? focusRecords[0].result.plan.reviewDate : '—', '', 'var(--warning)')}
+    </div>`;
+    const ledgerActions = `<div class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;">
+      <button class="btn btn-primary btn-sm" id="btn-new-sarc" ${patients.length ? '' : 'disabled'}>＋ 新建肌少症评估</button>
+      <a class="btn btn-ghost btn-sm" href="#/sarcopenia-stats">独立统计台账 →</a>
+    </div>`;
+    const trendCard = focusRecords.length >= 2 ? `<div class="card mt-3">
+      <div class="card-header"><h3 class="card-title"><span class="card-title-icon">📈</span>随访复查趋势对比（${U.esc(focusName)}）</h3></div>
+      <div class="card-body">${trendHTML(focusRecords)}</div>
+    </div>` : '';
 
-      <div class="sarc-stat-row">
-        ${statMini('首诊登记人数', patients.length, '人', 'var(--primary)')}
-        ${statMini('模块累计评估', all.length, '次', 'var(--info)')}
-        ${statMini('最近评估日期', all.length ? all.slice().sort((a, b) => new Date(b.assessDate || 0) - new Date(a.assessDate || 0))[0].assessDate : '—', '', 'var(--success)')}
-        ${statMini('下次复查建议', focusRecords[0] && focusRecords[0].result && focusRecords[0].result.plan ? focusRecords[0].result.plan.reviewDate : '—', '', 'var(--warning)')}
-      </div>
-
-      <div class="card mt-3">
-        <div class="card-header">
-          <h3 class="card-title"><span class="card-title-icon">📒</span>肌少症专项评估台账（本模块独立存储）</h3>
-          <div class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="btn btn-primary btn-sm" id="btn-new-sarc" ${patients.length ? '' : 'disabled'}>＋ 新建肌少症评估</button>
-            <a class="btn btn-ghost btn-sm" href="#/sarcopenia-stats">独立统计台账 →</a>
-          </div>
-        </div>
-        <div class="card-body" id="sarc-ledger">${ledgerHTML(all)}</div>
-      </div>
-
-      ${focusRecords.length >= 2 ? `<div class="card mt-3">
-        <div class="card-header"><h3 class="card-title"><span class="card-title-icon">📈</span>随访复查趋势对比（${U.esc(focusName)}）</h3></div>
-        <div class="card-body">${trendHTML(focusRecords)}</div>
-      </div>` : ''}
-    </div>`);
+    let inner;
+    if (ledgerStyle === 'radial') {
+      inner = `<div class="ledger-radial-wrap">${titleBar}${statRow}${rosterCard}${ledgerActions}<div class="lr-row">${trendCard}${execCard}</div>${todoCard}</div>`;
+    } else {
+      inner = `<div class="ledger-cockpit-wrap">${titleBar}<div class="lc-grid">
+        <div class="lc-col lc-left">${todoCard}</div>
+        <div class="lc-col lc-center">${statRow}${rosterCard}${ledgerActions}</div>
+        <div class="lc-col lc-right">${trendCard}${execCard}</div>
+      </div></div>`;
+    }
+    const wrap = U.el(`<div>${patientBar()}${inner}</div>`);
 
     if (window.bindPatientBar) bindPatientBar(wrap);
 

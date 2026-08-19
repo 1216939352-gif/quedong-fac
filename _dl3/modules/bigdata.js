@@ -260,6 +260,7 @@
         const d = u.get('dir');
         if (d === 'sarcopenia' || d === 'sarc') return 'sarcopenia';
         if (d === 'fall' || d === 'fall-risk') return 'fall';
+        if (d === 'spine' || d === 'spine-health') return 'spine';
       }
     } catch (e) { /* noop */ }
     return 'weight';
@@ -269,12 +270,14 @@
     const titleMap = {
       weight: '🚀 体重管理看板 · 鹊动健康数据总览',
       sarcopenia: '🧓 老年肌少症-跌倒风险 · 数据看板',
-      fall: '🤸 跌倒风险 · 数据看板'
+      fall: '🤸 跌倒风险 · 数据看板',
+      spine: '🦴 青少年脊柱健康 · 数据看板'
     };
     const subMap = {
       weight: '实时汇总体重管理档案、评估、方案、肌力、生活方式等核心指标',
       sarcopenia: '覆盖肌少症老人首诊档案、SPPB / CFS / SARC-F / 跌倒风险等级分布',
-      fall: '覆盖跌倒风险评估记录、复评依从、县区分布、高风险因素排序'
+      fall: '覆盖跌倒风险评估记录、复评依从、县区分布、高风险因素排序',
+      spine: '覆盖青少年首诊登记、Cobb 角分布、风险分层、Lenke 弯型与年龄段分布'
     };
     const segActive = (k) => k === dir ? 'is-active' : '';
     const wrap = U.el(`<div class="bigdata-page">
@@ -299,6 +302,7 @@
         <button type="button" class="bd-dir-seg-btn ${segActive('weight')}" data-bd-dir="weight" role="tab"><span class="bd-dir-icon">🚀</span><span class="bd-dir-text">体重管理</span></button>
         <button type="button" class="bd-dir-seg-btn ${segActive('sarcopenia')}" data-bd-dir="sarcopenia" role="tab"><span class="bd-dir-icon">🧓</span><span class="bd-dir-text">老年肌少症</span></button>
         <button type="button" class="bd-dir-seg-btn ${segActive('fall')}" data-bd-dir="fall" role="tab"><span class="bd-dir-icon">🤸</span><span class="bd-dir-text">跌倒风险</span></button>
+        <button type="button" class="bd-dir-seg-btn ${segActive('spine')}" data-bd-dir="spine" role="tab"><span class="bd-dir-icon">🦴</span><span class="bd-dir-text">青少年脊柱</span></button>
       </div>
 
       <div id="bd-dir-body" data-cur-dir="${dir}">
@@ -342,11 +346,13 @@
   function bdDemoKey(dir) {
     if (dir === 'sarcopenia') return 'sarcStatsDemo';
     if (dir === 'fall') return 'fallStatsDemo';
+    if (dir === 'spine') return 'spineStatsDemo';
     return 'bigdataDemo';
   }
   function bdFullscreenKey(dir) {
     if (dir === 'sarcopenia') return 'sarc';
     if (dir === 'fall') return 'fall';
+    if (dir === 'spine') return 'spine';
     return 'bigdata';
   }
 
@@ -364,12 +370,14 @@
     const titleMap = {
       weight: '🚀 体重管理看板 · 鹊动健康数据总览',
       sarcopenia: '🧓 老年肌少症-跌倒风险 · 数据看板',
-      fall: '🤸 跌倒风险 · 数据看板'
+      fall: '🤸 跌倒风险 · 数据看板',
+      spine: '🦴 青少年脊柱健康 · 数据看板'
     };
     const subMap = {
       weight: '实时汇总体重管理档案、评估、方案、肌力、生活方式等核心指标',
       sarcopenia: '覆盖肌少症老人首诊档案、SPPB / CFS / SARC-F / 跌倒风险等级分布',
-      fall: '覆盖跌倒风险评估记录、复评依从、县区分布、高风险因素排序'
+      fall: '覆盖跌倒风险评估记录、复评依从、县区分布、高风险因素排序',
+      spine: '覆盖青少年首诊登记、Cobb 角分布、风险分层、Lenke 弯型与年龄段分布'
     };
     const t = document.querySelector('#bd-hero-title'); if (t) t.innerHTML = U.esc(titleMap[dir] || titleMap.weight);
     const s = document.querySelector('#bd-hero-sub'); if (s) s.innerHTML = U.esc(subMap[dir] || subMap.weight);
@@ -409,7 +417,12 @@
       if (t) t.addEventListener('click', e => { e.stopPropagation(); card.classList.toggle('is-open'); });
     });
     root.querySelectorAll && root.querySelectorAll('.bd-seg button[data-range]').forEach(b => {
-      b.addEventListener('click', () => { AppState.bigdataRange = b.dataset.range; window.bdSwitchDir && window.bdSwitchDir(window.bdCurrentDir ? window.bdCurrentDir() : 'weight'); });
+      b.addEventListener('click', () => {
+        const dir = window.bdCurrentDir ? window.bdCurrentDir() : 'weight';
+        if (dir === 'spine' || dir === 'spine-health') AppState.spineStatsRange = b.dataset.range;
+        else AppState.bigdataRange = b.dataset.range;
+        window.bdSwitchDir && window.bdSwitchDir(dir);
+      });
     });
     root.querySelectorAll && root.querySelectorAll('.bd-insight[data-key]').forEach(el => {
       el.addEventListener('click', () => {
@@ -552,7 +565,253 @@
       } catch (e) { /* noop */ }
       return '<div class="alert alert-warning">跌倒风险看板未加载</div>';
     }
+    if (dir === 'spine') {
+      try { return bdBuildSpineBody(); } catch (e) { return '<div class="alert alert-warning">青少年脊柱健康看板渲染失败</div>'; }
+    }
     return bdBuildWeightBody();
+  }
+
+  /* 青少年脊柱健康看板（方案第 13 条：演示数据 + 全屏展示） */
+  function bdBuildSpineBody() {
+    /* 脊柱大数据看板：与体重/肌少症看板共用 kpiCardHTML / chartCardHTML 组件。
+       网格容器采用 bigdata-grid / bigdata-grid-2 的模块子类命名（bigdata-grid-spine-kpi、bigdata-grid-spine-charts），
+       KPI 与图表 key 语义统一（total / avgCobb / risk / cobb …），便于 .bd-insight[data-key] 洞察联动渲染。 */
+    /* 智能回退：无真实数据时自动启用演示，保证首次进入有内容可见；
+       只有用户主动点击过「退出演示」才不自动开启 */
+    const hasReal = (AppState.patients || []).some(p => p.module === 'spine' || p.spine || (p.result && p.result.riskName && p.base && p.base.staticCobb != null));
+    if (!hasReal && AppState.spineStatsDemo !== false && !AppState.spineStatsDemoPatients) {
+      AppState.spineStatsDemoPatients = spineDemoPatients();
+      AppState.spineStatsDemo = true;
+    }
+    const useDemo = AppState.spineStatsDemo === true;
+    const range = AppState.spineStatsRange || 'all';
+    if (useDemo && !AppState.spineStatsDemoPatients) {
+      AppState.spineStatsDemoPatients = spineDemoPatients();
+    }
+    const all = useDemo ? (AppState.spineStatsDemoPatients || []) : (AppState.patients || []);
+    const patients = all.filter(p => p.module === 'spine' || p.spine || (p.result && p.result.riskName && p.base && p.base.staticCobb != null));
+    if (!patients.length) return '<div class="alert alert-info">暂无青少年脊柱健康评估数据，点击右上角「演示数据」查看示例看板。</div>';
+
+    /* 按时间范围过滤 */
+    const rangeMs = range === '7d' ? 7 * 86400e3 : range === '30d' ? 30 * 86400e3 : Infinity;
+    const ranged = range === 'all' ? patients : patients.filter(p => p.createdAt && (Date.now() - new Date(p.createdAt).getTime()) <= rangeMs);
+    const s = spineCalcStats(ranged);
+    const pan = spineBuildPanels(s);
+    const railHtml = spineBuildInsightRail(s, range);
+    const controlBarHtml = spineControlBarHTML(range);
+
+    /* 准备图表数据 */
+    const riskData = [
+      { label: '低风险', value: s.riskGroups.low },
+      { label: '中风险', value: s.riskGroups.mid },
+      { label: '高风险', value: s.riskGroups.high }
+    ].filter(d => d.value);
+    const cobbData = [
+      { label: '10-24° (轻度)', value: s.cobbBuckets['10-24°'] },
+      { label: '25-44° (中度)', value: s.cobbBuckets['25-44°'] },
+      { label: '≥45° (重度)', value: s.cobbBuckets['≥45°'] }
+    ].filter(d => d.value);
+    const ageData = Object.entries(s.ageGroups).map(([label, value]) => ({ label, value })).filter(d => d.value);
+    const genderData = [{ label: '男', value: s.male }, { label: '女', value: s.female }].filter(d => d.value);
+    const risserData = Object.entries(s.risserGroups).map(([label, value]) => ({ label, value })).filter(d => d.value);
+    const lenkeData = Object.entries(s.lenkeGroups).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+    const SEMspine = {
+      risk: ['#34d399', '#fbbf24', '#f87171'],
+      cobb: ['#34d399', '#fbbf24', '#f87171'],
+      gender: ['#60a5fa', '#f472b6'],
+      risser: ['#22d3ee', '#fbbf24', '#f87171']
+    };
+    const maxAge = Math.max(...Object.values(s.ageGroups), 1);
+    const maxCobb = Math.max(...Object.values(s.cobbBuckets), 1);
+    const maxLenke = Math.max(...lenkeData.map(d => d.value), 1);
+
+    return `
+      ${controlBarHtml}
+      ${railHtml}
+
+      <div class="bigdata-grid bigdata-grid-spine-kpi">
+        ${kpiCardHTML({ key: 'total', label: '总评估人数', value: s.total, trend: `近 7 天 ${s.recent7} 人 / 近 30 天 ${s.recent30} 人`, panel: pan.total, narrative: '全部青少年脊柱评估人数。' })}
+        ${kpiCardHTML({ key: 'avgCobb', label: '平均 Cobb 角', value: s.avgCobb + '°', trend: `平均年龄 ${s.avgAge} 岁 · 参照 SRS 影像标准`, panel: pan.avgCobb, narrative: '基于静态 Cobb 角测量值。' })}
+        ${kpiCardHTML({ key: 'highRisk', label: '需支具/手术评估', value: s.riskGroups.high, trend: `高风险占比 ${s.total ? Math.round(s.riskGroups.high / s.total * 100) : 0}%`, panel: pan.highRisk, narrative: 'Cobb 角 ≥25° 通常需要支具，≥45° 建议手术。' })}
+        ${kpiCardHTML({ key: 'planRate', label: '方案转化率', value: s.total ? Math.round(s.planDone / s.total * 100) + '%' : '0%', trend: `已生成 ${s.planDone} 份干预方案`, panel: pan.planRate, narrative: '评估 → 干预方案的转化情况。' })}
+      </div>
+
+      <div class="bigdata-grid-2 bigdata-grid-spine-charts">
+        ${chartCardHTML({ key: 'risk', title: '风险等级分布', chartRow: donutChart(riskData, SEMspine.risk, 120) + legendHTML(riskData, SEMspine.risk), panel: miniList(riskData.map(d => ({ label: d.label, value: d.value, pct: s.total ? Math.round(d.value / s.total * 100) : 0 }))), narrative: '高/中/低风险青少年人数分布。' })}
+        ${chartCardHTML({ key: 'cobb', title: 'Cobb 角分级', chartRow: `<div class="bigdata-chart-canvas">${barChart(cobbData, maxCobb, '#60a5fa')}</div>` + legendHTML(cobbData, SEMspine.cobb), panel: miniList(cobbData.map(d => ({ label: d.label, value: d.value }))), narrative: '10-24° 轻度，25-44° 中度，≥45° 重度。' })}
+        ${chartCardHTML({ key: 'lenke', title: 'Lenke 弯曲分型分布', chartRow: `<div class="bigdata-chart-canvas">${hbarChart(lenkeData, '#534AB7')}</div>`, panel: miniList(lenkeData.map(d => ({ label: d.label, value: d.value }))), narrative: 'Lenke 1-6 型分布，决定手术入路选择。' })}
+        ${chartCardHTML({ key: 'age', title: '年龄段分布', chartRow: `<div class="bigdata-chart-canvas">${barChart(ageData, maxAge, '#22d3ee')}</div>`, panel: miniList(ageData.map(d => ({ label: d.label, value: d.value }))), narrative: '≥10 岁青少年脊柱侧弯高发期。' })}
+        ${chartCardHTML({ key: 'gender', title: '性别构成', chartRow: donutChart(genderData, SEMspine.gender, 120) + legendHTML(genderData, SEMspine.gender), panel: miniList(genderData.map(d => ({ label: d.label === '男' ? '男性' : '女性', value: d.value, pct: s.total ? Math.round(d.value / s.total * 100) : 0 }))), narrative: '女性青春期脊柱侧弯发病率显著高于男性。' })}
+        ${chartCardHTML({ key: 'risser', title: 'Risser 骨骼成熟度', chartRow: donutChart(risserData, SEMspine.risser, 120) + legendHTML(risserData, SEMspine.risser), panel: miniList(risserData.map(d => ({ label: d.label, value: d.value }))), narrative: 'Risser 0-2 进展风险高，4-5 已趋成熟。' })}
+        ${chartCardHTML({ key: 'trend', title: '近 14 天评估趋势', chartRow: `<div class="bigdata-chart-canvas">${lineChart(s.trend14, '#22d3ee')}</div>`, panel: `<div class="bd-drill-note">14 天日均评估约 ${(s.trend14.reduce((sum, t) => sum + t.value, 0) / 14).toFixed(1)} 人；峰值 ${Math.max(...s.trend14.map(t => t.value))} 人。</div>`, narrative: '每日评估建档趋势。' })}
+        ${chartCardHTML({ key: 'month', title: '近 6 月评估趋势', chartRow: `<div class="bigdata-chart-canvas">${barChart(s.trend6, Math.max(...s.trend6.map(t => t.value), 1), '#0ea5e9')}</div>`, panel: `<div class="bd-drill-note">近 6 个月每月评估人数 ${s.trend6.map(t => t.label + '：' + t.value).join(' · ')}。</div>`, narrative: '长周期评估趋势。' })}
+        ${chartCardHTML({ key: 'doctor', title: '医生工作量 TOP5', chartRow: `<div class="bigdata-chart-canvas">${hbarChart(s.doctorData.slice(0, 5), '#534AB7')}</div>`, panel: miniList(s.doctorData.map(d => ({ label: d.label, value: d.value }))), narrative: '评估量 TOP5 医生。' })}
+        ${chartCardHTML({ key: 'county', title: '县区分布 TOP8', chartRow: s.countyData.length ? `<div class="bigdata-chart-canvas">${hbarChart(s.countyData, '#22d3ee')}</div>` : '<div style="text-align:center;color:var(--text-muted);padding:24px;">暂无县区信息</div>', panel: miniList(s.countyData.map(d => ({ label: d.label, value: d.value }))), narrative: '青少年脊柱评估县区分布。' })}
+        ${chartCardHTML({ key: 'funnel', title: '业务完成漏斗', chartRow: `<div class="bigdata-funnel">
+            <div class="bigdata-funnel-item"><span>总评估</span><b>${s.total}</b></div>
+            <div class="bigdata-funnel-item"><span>高风险</span><b>${s.riskGroups.high}</b></div>
+            <div class="bigdata-funnel-item"><span>生成方案</span><b>${s.planDone}</b></div>
+          </div>`, panel: miniList([
+            { label: '评估 → 高风险识别率', value: s.total ? Math.round(s.riskGroups.high / s.total * 100) + '%' : '0%' },
+            { label: '评估 → 方案转化', value: s.total ? Math.round(s.planDone / s.total * 100) + '%' : '0%' },
+            { label: '高风险 → 方案转化', value: s.riskGroups.high ? Math.round(s.planDone / Math.max(1, s.riskGroups.high) * 100) + '%' : '0%' }
+          ]) + `<div class="bd-drill-note">业务漏斗各环节转化，重点关注高风险人群是否及时生成方案。</div>`, narrative: '青少年脊柱业务漏斗。' })}
+      </div>
+
+      <div id="te-bd-block" data-te-bd></div>
+    `;
+  }
+
+  function spineDemoPatients() {
+    const surnames = ['张', '李', '王', '刘', '陈', '杨', '赵', '黄', '周', '吴'];
+    const names = ['小明', '小红', '小丽', '小刚', '小芳', '小杰', '小敏', '小华', '小静', '小强'];
+    const doctors = ['王医生', '李医生', '张医生', '赵医生', '刘医生', '孙医生'];
+    const counties = ['海淀区', '朝阳区', '东城区', '西城区', '丰台区', '石景山', '通州区', '昌平区', '大兴区', '顺义区'];
+    const lens = ['Lenke 1AN', 'Lenke 1BN', 'Lenke 2AN', 'Lenke 3', 'Lenke 4', 'Lenke 5', 'Lenke 6', '其他'];
+    const out = [];
+    const today = new Date();
+    for (let i = 0; i < 96; i++) {
+      const gender = Math.random() > 0.55 ? 'female' : 'male';
+      const age = 10 + Math.floor(Math.random() * 10);  // 10-19
+      const cobb = 10 + Math.round(Math.random() * 55); // 10-65
+      const r = cobb >= 45 ? 'high' : cobb >= 25 ? 'mid' : 'low';
+      const riskName = r === 'high' ? '高风险' : r === 'mid' ? '中风险' : '低风险';
+      const risser = 0 + Math.floor(Math.random() * 6); // 0-5
+      const hasPlan = r !== 'low' && Math.random() > 0.25;
+      const createdDaysAgo = Math.floor(Math.random() * 60);
+      const createdAt = new Date(today);
+      createdAt.setDate(createdAt.getDate() - createdDaysAgo);
+      out.push({
+        id: 'spine_demo_' + i,
+        module: 'spine',
+        patientCode: 'QD-JZ-' + String(i + 1).padStart(5, '0'),
+        name: surnames[i % surnames.length] + names[i % names.length],
+        doctorId: doctors[i % doctors.length],
+        createdAt: createdAt.toISOString(),
+        data: { patient: { gender: gender, age: age, region: { county: counties[i % counties.length] } } },
+        age: age,
+        spine: { staticCobb: cobb, lenke: lens[Math.floor(Math.random() * lens.length)], risser: risser },
+        result: { risk: r, riskName: riskName, base: { staticCobb: cobb, lenke: lens[i % lens.length] }, plan: hasPlan ? { generatedAt: new Date().toISOString() } : null }
+      });
+    }
+    return out;
+  }
+
+  /* ===== 青少年脊柱专化统计（与体重看板相同的接口 / 字段） ===== */
+  function spineCalcStats(patients) {
+    const total = patients.length;
+    const male = patients.filter(p => (p.data && p.data.patient && p.data.patient.gender) === 'male').length;
+    const female = total - male;
+    const ageGroups = { '≤12岁': 0, '13-15岁': 0, '16-18岁': 0, '>18岁': 0 };
+    const cobbBuckets = { '10-24°': 0, '25-44°': 0, '≥45°': 0 };
+    const riskGroups = { low: 0, mid: 0, high: 0 };
+    const lenkeGroups = {};
+    const risserGroups = { '0-1级': 0, '2-3级': 0, '4-5级': 0 };
+    let ageSum = 0, ageCount = 0, cobbSum = 0, cobbN = 0;
+    patients.forEach(p => {
+      const sp = p.spine || {};
+      const r = p.result && p.result.risk ? p.result.risk : null;
+      const ag = (p.age != null ? p.age : (sp.age || (p.data && p.data.patient ? p.data.patient.age : null)));
+      if (ag != null) { ageSum += ag; ageCount++; if (ag <= 12) ageGroups['≤12岁']++; else if (ag <= 15) ageGroups['13-15岁']++; else if (ag <= 18) ageGroups['16-18岁']++; else ageGroups['>18岁']++; }
+      const cobb = parseFloat(sp.staticCobb);
+      if (!isNaN(cobb) && cobb > 0) { cobbSum += cobb; cobbN++; if (cobb < 25) cobbBuckets['10-24°']++; else if (cobb < 45) cobbBuckets['25-44°']++; else cobbBuckets['≥45°']++; }
+      if (r === 'high' || cobb >= 45) riskGroups.high++;
+      else if (r === 'mid' || (cobb >= 25 && cobb < 45)) riskGroups.mid++;
+      else riskGroups.low++;
+      const lk = sp.lenke || '未分型'; lenkeGroups[lk] = (lenkeGroups[lk] || 0) + 1;
+      const ris = parseInt(sp.risser);
+      if (!isNaN(ris)) { if (ris <= 1) risserGroups['0-1级']++; else if (ris <= 3) risserGroups['2-3级']++; else risserGroups['4-5级']++; }
+    });
+    const recent7 = patients.filter(p => p.createdAt && ((Date.now() - new Date(p.createdAt).getTime()) <= 7 * 86400e3)).length;
+    const recent30 = patients.filter(p => p.createdAt && ((Date.now() - new Date(p.createdAt).getTime()) <= 30 * 86400e3)).length;
+    /* 月度趋势（最近 6 个月按 ISO 月份聚合） */
+    const trend6 = [];
+    const labels = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const label = d.getMonth() + 1 + '月';
+      labels.push(label);
+      const ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+      const v = patients.filter(p => p.createdAt && p.createdAt.slice(0, 7) === ym).length;
+      trend6.push({ label: label, value: v });
+    }
+    /* 14 天建档趋势（按用户日期粒度） */
+    const trend14 = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(now); d.setDate(d.getDate() - i);
+      const ds = d.toISOString().slice(0, 10);
+      const value = patients.filter(p => p.createdAt && p.createdAt.slice(0, 10) === ds).length;
+      trend14.push({ label: i % 2 === 0 ? ds.slice(5) : '', value });
+    }
+    /* 医生工作量 TOP5 */
+    const doctorMap = {};
+    patients.forEach(p => { const d = p.doctorId || '未分配'; doctorMap[d] = (doctorMap[d] || 0) + 1; });
+    const doctorData = Object.entries(doctorMap).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+    /* 县区分布 TOP8 */
+    const countyMap = {};
+    patients.forEach(p => { const c = (p.data && p.data.patient && p.data.patient.region && p.data.patient.region.county) || ''; if (c) countyMap[c] = (countyMap[c] || 0) + 1; });
+    const countyData = Object.entries(countyMap).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, 8);
+    /* 干预方案生成数 */
+    const planDone = patients.filter(p => p.result && p.result.plan && p.result.plan.generatedAt).length;
+    return {
+      total, male, female, ageGroups, cobbBuckets, riskGroups, lenkeGroups, risserGroups,
+      avgCobb: cobbN ? (cobbSum / cobbN).toFixed(1) : '—',
+      avgAge: ageCount ? (ageSum / ageCount).toFixed(1) : '—',
+      recent7, recent30, trend6, trend14, doctorData, countyData, planDone
+    };
+  }
+
+  function spineBuildPanels(s) {
+    const T = s.total || 1;
+    return {
+      total: miniList([
+        { label: '总评估数', value: s.total },
+        { label: '近 7 天新增', value: s.recent7 },
+        { label: '近 30 天新增', value: s.recent30 },
+        { label: '男性占比', value: T ? Math.round(s.male / T * 100) + '%' : '0%' },
+        { label: '女性占比', value: T ? Math.round(s.female / T * 100) + '%' : '0%' }
+      ]) + `<div class="bd-drill-note">青少年脊柱健康评估总人数；按性别与近期新增查看增长趋势。</div>`,
+      avgCobb: miniList([
+        { label: '平均 Cobb 角', value: s.avgCobb + '°' },
+        { label: '10-24° 轻度', value: s.cobbBuckets['10-24°'], pct: T ? Math.round(s.cobbBuckets['10-24°'] / T * 100) : 0 },
+        { label: '25-44° 中度', value: s.cobbBuckets['25-44°'], pct: T ? Math.round(s.cobbBuckets['25-44°'] / T * 100) : 0 },
+        { label: '≥45° 重度', value: s.cobbBuckets['≥45°'], pct: T ? Math.round(s.cobbBuckets['≥45°'] / T * 100) : 0 }
+      ]) + `<div class="bd-drill-note">Cobb 角是评估脊柱侧弯严重程度的核心指标，≥25° 通常需要支具治疗，≥45° 建议手术评估。</div>`,
+      highRisk: miniList([
+        { label: '高风险（Cobb≥45°）', value: s.riskGroups.high },
+        { label: '中风险（Cobb 25-44°）', value: s.riskGroups.mid },
+        { label: '低风险（Cobb<25°）', value: s.riskGroups.low },
+        { label: '高风险占比', value: T ? Math.round(s.riskGroups.high / T * 100) + '%' : '0%' }
+      ]) + `<div class="bd-drill-note">高风险患者需要尽快支具/手术评估；中风险每 3 月随访。</div>`,
+      planRate: miniList([
+        { label: '已生成方案', value: s.planDone },
+        { label: '方案转化率', value: T ? Math.round(s.planDone / T * 100) + '%' : '0%' },
+        { label: '未生成方案', value: T - s.planDone }
+      ]) + `<div class="bd-drill-note">评估 → 干预方案转化情况，转化越高说明随访越紧密。</div>`
+    };
+  }
+
+  function spineBuildInsightRail(s) {
+    const T = s.total || 1;
+    const high = s.riskGroups.high || 0;
+    const mid = s.riskGroups.mid || 0;
+    const summary = `共 ${s.total} 名青少年完成脊柱评估，平均 Cobb 角 ${s.avgCobb}°。${high > 0 ? '其中 ' + high + ' 名需支具/手术评估。' : ''}${s.planDone > 0 ? '已为 ' + s.planDone + ' 名生成个性化干预方案。' : ''}`;
+    const cards = [
+      { icon: '🧒', title: '青少年人群覆盖', val: T, unit: '人', sub: '≤12 岁 / 13-15 / 16-18 / >18 岁四档年龄结构' },
+      { icon: '📐', title: '平均 Cobb 角', val: s.avgCobb, unit: '°', sub: 'Cobb 角 ≥25° 触发支具评估，≥45° 触发手术评估' },
+      { icon: '🚨', title: '高风险人数', val: high, unit: '人', sub: '立即启动支具 / 手术评估流程' },
+      { icon: '🎯', title: '方案转化', val: T ? Math.round(s.planDone / T * 100) : 0, unit: '%', sub: '评估 → 干预方案转化率' }
+    ];
+    return `<div class="bd-insight-rail"><div class="bd-insight-summary">${summary}</div>` +
+      cards.map(c => `<div class="bd-insight-card"><div class="ic">${c.icon}</div><div><div class="bd-insight-card-t">${c.title}</div><div class="bd-insight-card-v">${c.val}<small>${c.unit}</small></div><div class="bd-insight-card-s">${c.sub}</div></div></div>`).join('') +
+      '</div>';
+  }
+
+  function spineControlBarHTML(range) {
+    const segs = [['all', '全部'], ['30d', '近30天'], ['7d', '近7天']];
+    return `<div class="bd-controlbar"><span style="font-size:13px;color:var(--text-muted);font-weight:600;">时间范围</span>
+      <div class="bd-seg">${segs.map(([v, l]) => `<button data-range="${v}" class="${range === v ? 'active' : ''}">${l}</button>`).join('')}</div></div>`;
   }
 
   function bdBuildWeightBody() {
@@ -636,13 +895,13 @@
       </div>
       <div class="bigdata-grid-2">
         ${chartCardHTML({ key:'gender', title:'性别构成', chartRow: donutChart(genderData, ['var(--skin-c1)', 'var(--skin-c2)'], 120) + legendHTML(genderData, ['var(--skin-c1)', 'var(--skin-c2)']), panel: pan.gender, narrative:'男女比例与平均年龄，展开看明细。' })}
-        ${chartCardHTML({ key:'age', title:'年龄分布', chartRow: `<div style="display:flex;justify-content:center;width:100%;">${barChart(ageData, maxAge, 'var(--skin-c3)')}</div>`, panel: pan.age, narrative:'年龄分布，核心干预人群。' })}
+        ${chartCardHTML({ key:'age', title:'年龄分布', chartRow: `<div class="bigdata-chart-canvas">${barChart(ageData, maxAge, 'var(--skin-c3)')}</div>`, panel: pan.age, narrative:'年龄分布，核心干预人群。' })}
         ${chartCardHTML({ key:'bmi', title:'BMI 分布', chartRow: donutChart(bmiData, SEM.bmi, 120) + legendHTML(bmiData, SEM.bmi), panel: pan.bmi, narrative:'中国标准四级 BMI 分布。' })}
         ${chartCardHTML({ key:'risk', title:'健康风险分层', chartRow: donutChart(riskData, SEM.risk, 120) + legendHTML(riskData, SEM.risk), panel: pan.risk, narrative:'健康风险低 / 中 / 高分层。' })}
-        ${chartCardHTML({ key:'life', title:'生活方式健康度', chartRow: `<div style="display:flex;justify-content:center;width:100%;">${barChart(lifeData, maxLife, 'var(--skin-c4)')}</div>`, panel: pan.life, narrative:'生活方式健康度分级。' })}
-        ${chartCardHTML({ key:'trend', title:'近 30 天建档趋势', chartRow: `<div style="display:flex;justify-content:center;width:100%;">${lineChart(s.trend30, 'var(--skin-c1)')}</div>`, panel: pan.trend, narrative:'近 30 天每日建档趋势。' })}
-        ${chartCardHTML({ key:'doctor', title:'医生工作量 TOP5', chartRow: `<div style="display:flex;justify-content:center;width:100%;">${hbarChart(s.doctorData.slice(0, 5), 'var(--skin-c3)')}</div>`, panel: pan.doctor, narrative:'医生建档量 TOP5。' })}
-        ${chartCardHTML({ key:'planType', title:'方案类型覆盖', chartRow: `<div style="display:flex;justify-content:center;width:100%;">${barChart(planTypeData, maxPlanType, 'var(--skin-c4)')}</div>`, panel: pan.planType, narrative:'五类方案覆盖率。' })}
+        ${chartCardHTML({ key:'life', title:'生活方式健康度', chartRow: `<div class="bigdata-chart-canvas">${barChart(lifeData, maxLife, 'var(--skin-c4)')}</div>`, panel: pan.life, narrative:'生活方式健康度分级。' })}
+        ${chartCardHTML({ key:'trend', title:'近 30 天建档趋势', chartRow: `<div class="bigdata-chart-canvas">${lineChart(s.trend30, 'var(--skin-c1)')}</div>`, panel: pan.trend, narrative:'近 30 天每日建档趋势。' })}
+        ${chartCardHTML({ key:'doctor', title:'医生工作量 TOP5', chartRow: `<div class="bigdata-chart-canvas">${hbarChart(s.doctorData.slice(0, 5), 'var(--skin-c3)')}</div>`, panel: pan.doctor, narrative:'医生建档量 TOP5。' })}
+        ${chartCardHTML({ key:'planType', title:'方案类型覆盖', chartRow: `<div class="bigdata-chart-canvas">${barChart(planTypeData, maxPlanType, 'var(--skin-c4)')}</div>`, panel: pan.planType, narrative:'五类方案覆盖率。' })}
         ${chartCardHTML({ key:'funnel', title:'业务完成漏斗', chartRow: `<div class="bigdata-funnel">
             <div class="bigdata-funnel-item"><span>建档</span><b>${s.total}</b></div>
             <div class="bigdata-funnel-item"><span>完成评估</span><b>${s.assessed}</b></div>
