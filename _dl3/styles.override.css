@@ -2698,7 +2698,7 @@ html[data-theme="dark"] .portal-card.pg-card { background:linear-gradient(145deg
 .portal.portal-game { justify-content:center; overflow:hidden; padding:68px 24px 28px; background:radial-gradient(circle at 50% -20%, rgba(59,130,246,.10), transparent 55%); }
 .portal.portal-game .portal-hero { margin-bottom:18px; }
 .portal.portal-game .portal-subtitle { margin-top:10px; }
-.portal-card.pg-card { justify-content:flex-end; padding:0; border:none; background:linear-gradient(145deg, color-mix(in srgb, var(--pc) 105%, #fff), color-mix(in srgb, var(--pc) 75%, #000)); box-shadow:0 28px 70px rgba(2,6,23,.38), inset 0 1px 0 rgba(255,255,255,.22); }
+.portal-card.pg-card { position:absolute; left:50%; top:50%; margin:0; transform-origin:center center; justify-content:flex-end; padding:0; border:none; background:linear-gradient(145deg, color-mix(in srgb, var(--pc) 105%, #fff), color-mix(in srgb, var(--pc) 75%, #000)); box-shadow:0 28px 70px rgba(2,6,23,.38), inset 0 1px 0 rgba(255,255,255,.22); }
 .portal-card.pg-card::before { background:radial-gradient(circle at 78% 8%, rgba(255,255,255,.32), transparent 55%); opacity:.45; }
 .portal-card.pg-card .pc-edge { background:linear-gradient(135deg, rgba(255,255,255,.55), transparent 42%, transparent 62%, rgba(255,255,255,.28)); }
 .portal-card.pg-card .pg-shine { position:absolute; top:0; left:0; width:60%; height:100%; border-radius:26px; background:linear-gradient(115deg, transparent 38%, rgba(255,255,255,.22) 50%, transparent 62%); transform:translateX(-120%); pointer-events:none; z-index:4; }
@@ -2920,11 +2920,15 @@ html[data-theme="dark"] .portal-card.pg-card { background:linear-gradient(145deg
   transform:translate(-50%,-50%) translateX(-500px) translateZ(-200px) rotateY(32deg) scale(.62); opacity:.25; z-index:2; }
 .portal-v2 .portal-card.pg-card[data-off="2"] {
   transform:translate(-50%,-50%) translateX(500px) translateZ(-200px) rotateY(-32deg) scale(.62); opacity:.25; z-index:2; }
-/* ±3 及更远：完全隐藏 */
+/* ±3 及更远：完全隐藏（支持最多 13 张卡片） */
 .portal-v2 .portal-card.pg-card[data-off="-3"],
 .portal-v2 .portal-card.pg-card[data-off="3"],
 .portal-v2 .portal-card.pg-card[data-off="-4"],
-.portal-v2 .portal-card.pg-card[data-off="4"] {
+.portal-v2 .portal-card.pg-card[data-off="4"],
+.portal-v2 .portal-card.pg-card[data-off="-5"],
+.portal-v2 .portal-card.pg-card[data-off="5"],
+.portal-v2 .portal-card.pg-card[data-off="-6"],
+.portal-v2 .portal-card.pg-card[data-off="6"] {
   opacity:0; pointer-events:none; z-index:1;
   transform:translate(-50%,-50%) translateZ(-340px) scale(.52); }
 /* 悬停：两侧半透明卡片恢复 100% 不透明度 */
@@ -3226,5 +3230,17 @@ html[data-theme="dark"] .portal-card.pg-card { background:linear-gradient(145deg
 .rc-modal-body { padding: 20px 24px; overflow: auto; background: #fff; color: #1a1a1a; }
 @media (max-width: 860px) { .rc-body { flex-direction: column; } .rc-left { width: 100%; flex: none; position: static; } .rc-ptlist { max-height: 240px; } }
 
+/* ===== 肌力报告解读复合页：隐藏左侧患者列表，内容撑满 ===== */
+.rc-body.is-muscle .rc-left { display: none; }
+.rc-body.is-muscle .rc-right { width: 100%; flex: 1 1 auto; }
+.rc-muscle-page { display: flex; flex-direction: column; gap: 14px; }
+.rc-muscle-header { align-items: flex-start; }
+.rc-muscle-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.rc-muscle-col { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.rc-muscle-col-title { font-size: 16px; font-weight: 700; color: var(--text-primary); padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.rc-muscle-col .report-doc { border: none; border-radius: 0; box-shadow: none; }
+@media (max-width: 1100px) {
+  .rc-muscle-grid { grid-template-columns: 1fr; }
+}
 
 

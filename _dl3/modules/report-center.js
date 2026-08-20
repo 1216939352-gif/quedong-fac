@@ -18,6 +18,110 @@
 
   function num(v) { var x = parseFloat(v); return isFinite(x) ? x : null; }
 
+  /* —— 肌力报告解读复合页（等速 + 等张同屏） —— */
+  function muscleCtx() {
+    return {
+      patient: AppState.patient || {},
+      assessment: AppState.assessment || {},
+      lifeSurvey: AppState.lifeSurvey || {},
+      plan: AppState.plan || {},
+      isokineticData: AppState.isokineticData || [],
+      isotonicData: AppState.isotonicData || [],
+      config: AppState.config || {},
+      systemTitle: (AppState.config && AppState.config.systemTitle) || ''
+    };
+  }
+  function muscleBodyHTML(ctx, scope) {
+    try {
+      if (window.buildReportDoc) return window.buildReportDoc(ctx, scope);
+    } catch (e) { console.warn('肌力报告渲染失败', e); }
+    return '<div class="alert alert-warning">报告渲染器未就绪</div>';
+  }
+  function musclePatientOptions() {
+    try {
+      var api = window.CenterAPI;
+      var patients = api ? (api.loadAll() || []) : [];
+      var cur = (AppState.patient || {}).id;
+      return patients.map(function (p) {
+        var name = p.patientName || (p.data && p.data.patient && p.data.patient.name) || '未命名';
+        var sel = (cur && p.id === cur) ? ' selected' : '';
+        return '<option value="' + U.esc(p.id) + '"' + sel + '>' + U.esc(name) + '</option>';
+      }).join('');
+    } catch (e) { return ''; }
+  }
+  function musclePageHTML() {
+    var ctx = muscleCtx();
+    var curName = (ctx.patient || {}).name || '未选择患者';
+    return '<div class="rc-muscle-page">' +
+      '<div class="page-header no-print rc-muscle-header">' +
+        '<div><h2 class="page-title">💪 肌力报告解读</h2>' +
+        '<p class="text-muted">等速与等张肌力报告同屏查看 · 选择患者后自动加载两项报告</p></div>' +
+        '<div class="topbar-actions no-print">' +
+          '<button class="btn btn-primary" onclick="window.printMuscleComboReport()">🖨️ 打印 / 导出 PDF</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="card no-print">' +
+        '<div class="card-body">' +
+          '<div class="form-row" style="align-items:flex-end;">' +
+            '<div class="form-group" style="flex:1;min-width:240px;">' +
+              '<label>选择患者</label>' +
+              '<select id="muscle-rep-pick" onchange="window.loadMuscleComboPatient(this.value)">' +
+                '<option value="">— 选择患者查看报告 —</option>' +
+                musclePatientOptions() +
+              '</select>' +
+            '</div>' +
+            '<div class="form-group" style="font-size:12px;color:var(--text-muted);">' +
+              '当前：<span id="muscle-rep-cur">' + U.esc(curName) + '</span>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="rc-muscle-grid">' +
+        '<div class="rc-muscle-col">' +
+          '<div class="rc-muscle-col-title">⚙️ 等速肌力报告解读</div>' +
+          '<div id="muscle-iso-body">' + muscleBodyHTML(ctx, 'isokinetic') + '</div>' +
+        '</div>' +
+        '<div class="rc-muscle-col">' +
+          '<div class="rc-muscle-col-title">🏋️ 等张肌力报告解读</div>' +
+          '<div id="muscle-iot-body">' + muscleBodyHTML(ctx, 'isotonic') + '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+  function bindMusclePage() {
+    // select 通过 onchange 直接驱动；如未来需要初始化图表可在此扩展
+  }
+  window.loadMuscleComboPatient = async function (id) {
+    if (!id) return;
+    try {
+      await loadPatientContext(id);
+      var ctx = muscleCtx();
+      var isoBody = U.qs('#muscle-iso-body');
+      var iotBody = U.qs('#muscle-iot-body');
+      var curLabel = U.qs('#muscle-rep-cur');
+      if (isoBody) isoBody.innerHTML = muscleBodyHTML(ctx, 'isokinetic');
+      if (iotBody) iotBody.innerHTML = muscleBodyHTML(ctx, 'isotonic');
+      if (curLabel) curLabel.textContent = (ctx.patient || {}).name || '未命名';
+      U.toast('已加载患者肌力报告', 'success');
+    } catch (e) {
+      console.error(e);
+      U.toast('加载患者失败：' + (e.message || e), 'error');
+    }
+  };
+  window.printMuscleComboReport = async function () {
+    var iso = U.qs('#muscle-iso-body');
+    var iot = U.qs('#muscle-iot-body');
+    if (!iso || !iot) return;
+    var html = '<div class="rc-muscle-print"><h2>肌力报告解读</h2>' +
+      '<h3>等速肌力报告解读</h3>' + iso.innerHTML +
+      '<h3>等张肌力报告解读</h3>' + iot.innerHTML + '</div>';
+    try {
+      var qb = await window.Share.buildPlanQrBlock({ mode: 'report', scope: 'muscle' });
+      if (qb) html += qb;
+    } catch (e) { /* 二维码生成失败不影响打印 */ }
+    if (window.printReportHTML) window.printReportHTML(html);
+  };
+
   /* —— 数据聚合 —— */
   function weightReports() {
     if (!window.DB || !DB.getPatients) return [];
@@ -183,7 +287,7 @@
             '<div class="topbar-actions"><button class="btn btn-secondary" id="rc-refresh">🔄 刷新</button></div>' +
           '</div>' +
           tabsHTML() +
-          '<div class="rc-body">' +
+          '<div class="rc-body' + (state.unit === 'muscle' ? ' is-muscle' : '') + '">' +
             '<aside class="rc-left no-print">' +
               '<div class="rc-search"><input type="text" id="rc-q" placeholder="搜索患者姓名…" value="' + U.esc(state.q) + '">' +
                 '<span class="rc-search-count" id="rc-ptcount"></span></div>' +
@@ -198,11 +302,8 @@
 
       function renderLeft() {
         if (state.unit === 'muscle') {
-          ptlist.innerHTML = '<div class="rc-empty">肌力报告解读为独立报告，点击下方入口打开</div>';
-          right.innerHTML = '<div class="rc-muscle-entry">' +
-            '<a class="rc-muscle-card" href="#/isokinetic-report"><span class="rc-muscle-ico">⚙️</span><span class="rc-muscle-title">等速肌力报告解读</span><span class="rc-muscle-desc">峰力矩 / 双侧不对称 / 力矩衰减率解读</span></a>' +
-            '<a class="rc-muscle-card" href="#/isotonic-report"><span class="rc-muscle-ico">🏋️</span><span class="rc-muscle-title">等张肌力报告解读</span><span class="rc-muscle-desc">1RM / 训练负荷换算解读</span></a>' +
-            '</div>';
+          right.innerHTML = musclePageHTML();
+          bindMusclePage();
           return;
         }
         var all = collect(state.unit);
