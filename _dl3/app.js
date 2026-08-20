@@ -1032,7 +1032,8 @@ const STANDALONE_ROUTES = {
   '#/bigdata': 1, '#/admin': 1, '#/accounts': 1, '#/ops': 1,
   '#/ops-correct': 1, '#/ops-switch': 1, '#/errlog': 1,
   '#/info-admin': 1, '#/msg-admin': 1, '#/info-groups': 1, '#/action-library': 1,
-  '#/assets': 1  // 鹊动设备档案库：全屏独立页，不显示左侧导航
+  '#/assets': 1,  // 鹊动设备档案库：全屏独立页，不显示左侧导航
+  '#/report': 1, '#/report-center': 1  // 报告管理中心：全屏独立页，去掉左侧单元导航栏
 };
 
 // 读取当前选中单元（持久化到 localStorage）
