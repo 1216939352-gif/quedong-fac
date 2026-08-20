@@ -592,11 +592,9 @@
           <td><button class="btn btn-sm btn-primary sr-rem-btn" data-id="${r.id}">进入评估</button></td></tr>`).join('')}</tbody>
       </table></div></div></div>` : '';
 
-    const todoHtml = ttCard('sarc');
-    let todoCount = 0;
-    try { todoCount = (window.TodayTodo.buildSarc(all).items || []).length; } catch (e) {}
-    const todoDrawer = todoHtml ? '<div class="lw-todo-pop" id="lw-todo-pop"><div class="lw-todo-backdrop" id="lw-todo-backdrop"></div><div class="lw-todo-panel" id="lw-todo-panel"><button type="button" class="lw-todo-close" id="lw-todo-close" aria-label="关闭">✕</button>' + todoHtml + '</div></div>' : '';
-    const todoFab = `<button type="button" class="lw-todo-fab" id="lw-todo-fab" title="今日待办" aria-label="今日待办"><span class="lw-todo-ico">📌</span>${todoCount ? '<span class="lw-todo-badge">' + todoCount + '</span>' : ''}</button>`;
+    // 接入代办（今日待办）改为可编辑组件：由 WidgetLayout 在 #wl-dock 渲染，可被编辑器删除/恢复，不再硬编码悬浮
+    const todoDrawer = '';
+    const todoFab = '';
 
     // 底部左右并排：训练执行记录 + 周期复测提醒
     const bottomCards = [execCard, remCard].filter(Boolean).join('');
@@ -606,6 +604,7 @@
       ${titleBar}
       <div class="lw-top">${ptCardHost}</div>
       ${bottomRowHtml}
+      <div id="wl-dock" class="wl-dock"></div>
       ${todoDrawer}${todoFab}
     </div>`);
 
@@ -636,6 +635,9 @@
     } catch (e) {} }, 100);
 
     U.qsa('.sr-rem-btn', wrap).forEach(b => b.onclick = () => startAssess(b.dataset.id));
+
+    // 挂载页面组件编辑器（可编辑卡片区）：今日待办/报告中心/复诊追踪 + 自定义卡片
+    setTimeout(() => { try { if (window.WidgetLayout) window.WidgetLayout.mount('sarcopenia-ledger', '#wl-dock'); } catch (e) { console.error('widget dock mount failed', e); } }, 120);
 
     // S7：肌少症台账搜索 / 筛选 / 排序
     const ledgerEl = U.qs('#sarc-ledger', wrap);
