@@ -1195,7 +1195,8 @@
         cat: cat,
         items: SPINE_ACTIONS[cat].map(function (a) {
           return {
-            code: aCode(a), name: aName(a), device: aDevice(a), img: aImg(a), video: aVideo(a),
+            code: aCode(a), name: aName(a), device: aDevice(a),
+            img: (aDevice(a) ? aImg(a) : ''), video: aVideo(a),
             posture: a.posture || '',
             svg: (window.SpineExerciseLib && window.SpineExerciseLib.figureSVG) ? window.SpineExerciseLib.figureSVG(a.posture) : '',
             steps: aSteps(a), cautions: aCautions(a), types: aTypes(a), levels: aLevels(a),
@@ -1425,7 +1426,8 @@
         cat: cat,
         items: actions[cat].map(function (a) {
           return {
-            code: aCode(a), name: aName(a), device: aDevice(a), img: aImg(a), video: aVideo(a),
+            code: aCode(a), name: aName(a), device: aDevice(a),
+            img: (aDevice(a) ? aImg(a) : ''), video: aVideo(a),
             posture: a.posture || '',
             svg: (window.SpineExerciseLib && window.SpineExerciseLib.figureSVG) ? window.SpineExerciseLib.figureSVG(a.posture) : '',
             steps: aSteps(a), cautions: aCautions(a), types: aTypes(a), levels: aLevels(a),

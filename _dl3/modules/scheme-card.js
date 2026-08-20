@@ -126,10 +126,12 @@
       '</div></div>';
   }
 
-  /* ============ 分节卡片（对齐体重管理 .card 章节） ============ */
-  function section(title, icon, bodyHtml) {
+  /* ============ 分节卡片（对齐体重管理 .card 章节）
+   * gridClass：手动动作节用 .sc-ex-grid（auto-fill 自适应列）；
+   *           设备处方节统一用 .grid-3（与体重管理 programBlock / device1RMHTML 同款 3 列网格）。 */
+  function section(title, icon, bodyHtml, gridClass) {
     return '<div class="card mt-3 sc-section"><div class="card-header"><h3 class="card-title"><span class="card-title-icon">' +
-      esc(icon || '🧩') + '</span>' + esc(title) + '</h3></div><div class="card-body"><div class="sc-ex-grid">' + bodyHtml + '</div></div></div>';
+      esc(icon || '🧩') + '</span>' + esc(title) + '</h3></div><div class="card-body"><div class="' + (gridClass || 'sc-ex-grid') + '">' + bodyHtml + '</div></div></div>';
   }
 
   /* ============ 整方案渲染（PC / 手机 / 打印 同版 .card 网格） ============ */
@@ -153,7 +155,10 @@
         }
         return exerciseCard(it, i + 1, { lib: lib, mode: opts.mode, kind: kind, cat: s.cat });
       }).join('');
-      return section(s.cat, s.icon, cards);
+      /* 设备处方节统一走 .grid-3（3 列固定网格），与体重管理 device1RMHTML / programBlock 同款排版；
+       * 手动动作节保持 .sc-ex-grid（auto-fill 自适应列）。 */
+      var isDeviceSection = !!(s.items && s.items.length && s.items[0] && s.items[0].device);
+      return section(s.cat, s.icon, cards, isDeviceSection ? 'grid-3' : 'sc-ex-grid');
     }).join('');
     if (opts.qrHtml) body += '<div class="mt-3">' + opts.qrHtml + '</div>';
     if (isPrint) {

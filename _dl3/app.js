@@ -1842,24 +1842,26 @@ window.PlanMediaView = (function () {
     return id;
   }
   // 卡片缩略图：图片优先展示图片；视频展示封面+播放角标；本地媒体展示占位（由 hydrate 补图）；无媒体显示占位
+  // 健壮性：图片/视频加载失败（404）时自动回退到小Qoo 占位，杜绝破图/空白。
   function thumb(e, lib, id, h) {
     h = h || 130;
     const vAttr = e.video ? U.esc(e.video) : '';
     const iAttr = e.image ? U.esc(e.image) : '';
     const common = `data-pmv-open="${lib}|${id}" data-pmv-v="${vAttr}" data-pmv-i="${iAttr}" data-pmv-name="${U.esc(e.name || '')}"`;
+    const qooInner = `<img class="pmv-qoo-img" src="assets/qoo.png" alt="" onerror="this.style.display='none'" /><span class="pmv-qoo-cap">小Qoo 默认图</span>`;
+    // 媒体加载失败时显示的隐藏小Qoo 兜底层（绝对铺满容器）
+    const qooFallback = `<div class="pmv-qoo-fb" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;flex-direction:column;gap:6px;background:var(--bg-secondary);border-radius:10px;">${qooInner}</div>`;
+    const onMediaErr = "this.style.display='none';this.parentNode.classList.add('pmv-thumb-qoo');var fb=this.parentNode.querySelector('.pmv-qoo-fb');if(fb)fb.style.display='flex';var pb=this.parentNode.querySelector('.pmv-play');if(pb)pb.style.display='none';";
     if (e.image && e.image !== '__local__') {
-      return `<div class="pmv-thumb" ${common} style="height:${h}px;"><img src="${U.esc(e.image)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:10px;"/></div>`;
+      return `<div class="pmv-thumb" ${common} style="height:${h}px;position:relative;"><img src="${U.esc(e.image)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:10px;" onerror="${onMediaErr}" />${qooFallback}</div>`;
     }
     if (e.video && e.video !== '__local__') {
-      return `<div class="pmv-thumb pmv-thumb-v" ${common} style="height:${h}px;"><video src="${U.esc(e.video)}" muted preload="metadata" style="width:100%;height:100%;object-fit:cover;border-radius:10px;"></video><span class="pmv-play">▶</span></div>`;
+      return `<div class="pmv-thumb pmv-thumb-v" ${common} style="height:${h}px;position:relative;"><video src="${U.esc(e.video)}" muted preload="metadata" style="width:100%;height:100%;object-fit:cover;border-radius:10px;" onerror="${onMediaErr}"></video><span class="pmv-play">▶</span>${qooFallback}</div>`;
     }
     if (e.image === '__local__' || e.video === '__local__') {
       return `<div class="pmv-thumb pmv-thumb-local" data-pmv-local="${lib}|${id}" ${common} style="height:${h}px;"><span>${e.video === '__local__' ? '🎬 本地视频（点击查看）' : '🖼️ 本地图片（点击查看）'}</span></div>`;
     }
-    return `<div class="pmv-thumb pmv-thumb-qoo" ${common} style="height:${h}px;">
-      <img class="pmv-qoo-img" src="assets/qoo.png" alt="" onerror="this.style.display='none'" />
-      <span class="pmv-qoo-cap">小Qoo 默认图</span>
-    </div>`;
+    return `<div class="pmv-thumb pmv-thumb-qoo" ${common} style="height:${h}px;">${qooInner}</div>`;
   }
   // 折叠文本：超过阈值折叠，按钮展开/收起（配合全局委托点击）
   function fold(text, label) {
