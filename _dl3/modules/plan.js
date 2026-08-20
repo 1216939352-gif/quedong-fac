@@ -608,6 +608,8 @@
       printSarcoPlan(pl, rec);
     };
     bindPatientBar(wrap);
+    /* 设备处方卡（PlanView.itemCard）视频点击播放：补 PlanView 委派；徒手卡仍由 PlanMediaView 全局处理 */
+    if (window.PlanView && PlanView.bindPlay) PlanView.bindPlay(wrap);
     return wrap;
   };
 

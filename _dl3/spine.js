@@ -1304,7 +1304,8 @@
       };
       printSpinePlan(plRec);
     };
-    /* 动作卡媒体（图片/视频）点击播放由 window.PlanMediaView 全局委派处理，无需逐卡绑定 */
+    /* 设备处方卡（PlanView.itemCard）视频点击播放：补 PlanView 委派；徒手卡仍由 PlanMediaView 全局处理 */
+    if (window.PlanView && PlanView.bindPlay) PlanView.bindPlay(wrap);
 
     buildPlanRail(wrap, '#spine-plan-body');
     return wrap;

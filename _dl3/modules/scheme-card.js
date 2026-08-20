@@ -116,7 +116,6 @@
         '<div class="sc-ex-head"><span class="sc-ex-idx sc-ex-idx-dev">' + esc(idx) + '</span><strong class="sc-ex-name">' + esc(item.name) + '</strong>' +
           (item.device ? '<span class="sc-dev-badge">🤖 鹊动设备</span>' : '') + '</div>' +
         (item.device ? '<div class="sc-dev-name">' + esc(item.device) + '</div>' : '') +
-        '<div class="exercise-diagram">' + schematicSVG('device') + '</div>' +
         '<div class="sc-ex-meta">' +
           (item.dose ? '<div><b class="sc-k">训练剂量：</b>' + esc(item.dose) + '</div>' : '') +
           (reason ? '<div><b class="sc-k">匹配依据：</b>' + esc(reason) + '</div>' : '') +
@@ -141,7 +140,17 @@
     var body = (sections || []).map(function (s) {
       var cards = (s.items || []).map(function (it, i) {
         var kind = catKind(s.cat);
-        if (it.device) return deviceCard(it, i + 1, { lib: lib, mode: opts.mode });
+        if (it.device) {
+          /* 设备处方卡统一对齐体重管理的 PlanView.itemCard：
+           *  · 全局不画线条人物示意图
+           *  · 仅显示上传的设备图 / 视频（点 ▶ 播放由 PlanView.bindPlay 委派） */
+          if (window.PlanView && PlanView.itemCard) {
+            var pvUnit = lib === 'spine' ? 'spine' : (lib === 'sarc' ? 'sarcopenia' : 'weight');
+            var pvMode = isPrint ? 'print' : (opts.mode === 'mobile' ? 'mobile' : 'pc');
+            return PlanView.itemCard(it, { unit: pvUnit, mode: pvMode, idx: i });
+          }
+          return deviceCard(it, i + 1, { lib: lib, mode: opts.mode });
+        }
         return exerciseCard(it, i + 1, { lib: lib, mode: opts.mode, kind: kind, cat: s.cat });
       }).join('');
       return section(s.cat, s.icon, cards);

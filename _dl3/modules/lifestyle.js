@@ -99,30 +99,38 @@
     const lifeDraft = SmartForm.bindDraft(form, 'life-form', { indicatorHost: '#life-actions' });
 
     function showReport() {
-      const out = U.qs('#life-output', wrap);
       if (!AppState.lifeSurvey || !AppState.lifeSurvey._scored) {
-        out.innerHTML = '<div class="alert alert-warning">请先点击「生成生活方式干预报告」。</div>';
+        U.toast('请先点击「生成生活方式干预报告」', 'warning');
         return;
       }
-      out.innerHTML = '<div class="life-report-full">' + window.buildReportDoc(null, 'lifestyle') + '</div>' +
-        `<div class="no-print" style="margin-top:12px;display:flex;gap:10px;">
-          <button class="btn btn-primary btn-sm" id="btn-print-life">打印 / 导出本报告</button>
-          <button class="btn btn-secondary btn-sm" id="btn-share-life">📲 分享二维码</button>
-          <a class="btn btn-ghost btn-sm" href="#/report">前往报告管理中心</a>
-        </div>`;
-      U.qs('#btn-print-life', out).onclick = async () => {
-        const stage = document.getElementById('report-print-stage') ||
-          (() => { const s = document.createElement('div'); s.id = 'report-print-stage'; document.body.appendChild(s); return s; })();
-        let html = window.buildReportDoc(null, 'lifestyle');
-        try { const qb = await window.Share.buildPlanQrBlock({ mode: 'report', scope: 'lifestyle' }); if (qb) html += qb; } catch (e) {}
-        stage.innerHTML = html;
-        const clear = () => { stage.innerHTML = ''; window.onafterprint = null; };
-        window.onafterprint = clear;
-        setTimeout(() => window.print(), 60);
+      const html = window.buildReportDoc(null, 'lifestyle');
+      const modalRef = U.modal({
+        title: '鹊动 · 生活方式干预评估报告',
+        body: '<div class="life-report-full">' + html + '</div>',
+        width: '100vw',
+        cls: 'ai-modal-full ac-step-fullscreen ac-ai-fullscreen',
+        footer:
+          '<div class="ac-hint">系统自动生成，须经专业人员确认</div>' +
+          '<button class="btn btn-secondary" id="btn-life-close">关闭</button>' +
+          '<button class="btn btn-ghost" id="btn-share-life">📲 分享二维码</button>' +
+          '<button class="btn btn-success" id="btn-print-life">📄 打印 / 导出 PDF</button>'
+      });
+      const printBtn = U.qs('#btn-print-life', modalRef.overlay);
+      if (printBtn) printBtn.onclick = function () {
+        try {
+          const w = window.open('', '_blank');
+          if (!w) { U.toast('浏览器拦截了新窗口，请允许后重试', 'warning'); return; }
+          w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>鹊动生活方式评估报告</title><style>body{font-family:system-ui,"Microsoft YaHei",sans-serif;max-width:920px;margin:32px auto;padding:0 24px;color:#1a1a2e}.report-doc{line-height:1.85;font-size:14px}.report-h3{font-size:17px;font-weight:700;margin:0 0 16px;padding:10px 14px;background:#f0fdfa;border-left:4px solid #0d9488;border-radius:8px}h1,h2,h3{color:#0f172a}.report-sign{margin-top:24px;display:flex;justify-content:space-between;font-size:13px;color:#475569}.report-footer{margin-top:8px;font-size:12px;color:#94a3b8}</style></head><body>' + html + '</body></html>');
+          w.document.close();
+          setTimeout(function () { w.print(); }, 400);
+        } catch (e) { U.toast('导出失败：' + (e.message || e), 'error'); }
       };
-      U.qs('#btn-share-life', out).onclick = () => {
+      const shareBtn = U.qs('#btn-share-life', modalRef.overlay);
+      if (shareBtn) shareBtn.onclick = function () {
         if (window.Share) window.Share.openReportQRModal('lifestyle'); else U.toast('分享组件未加载', 'warning');
       };
+      const closeBtn = U.qs('#btn-life-close', modalRef.overlay);
+      if (closeBtn) closeBtn.onclick = function () { modalRef.close(); };
     }
 
     function computeAndStore() {
@@ -143,7 +151,6 @@
       U.withBtn(e.currentTarget, '生成中…', () => {
         U.toast('生活方式干预报告已生成', 'success');
         showReport();
-        setTimeout(() => U.qs('#life-output', wrap).scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
       });
     };
 
