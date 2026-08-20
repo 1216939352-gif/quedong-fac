@@ -17,6 +17,10 @@
   const E = () => window.SarcEngine2;
   const D = () => window.SarcDB;
 
+  /* 肌少症独立患者名册：与脊柱健康共享 qd_sarcopenia_patients 存档，但按 spine 标记隔离，
+     仅取本模块患者（无 spine 标记），避免脊柱登记人串显到肌少症台账 / 自动选中。 */
+  function sarcPatients() { return (D().listPatients() || []).filter(p => !p.spine); }
+
   /* ==================================================================
    * 通用 UI 小工具（§8.3 颜色标签：绿色正常 / 黄色偏低偏高 / 红色高风险）
    * ================================================================== */
@@ -384,7 +388,7 @@
    * ================================================================== */
 
   function computeSarcPatientView() {
-    return (D().listPatients() || []).map(p => {
+    return sarcPatients().map(p => {
       const recs = D().listByPatient(p.id).sort((a, b) => new Date(b.assessDate || 0) - new Date(a.assessDate || 0));
       const latest = recs[0] || null;
       const rs = latest ? latest.result : null;
@@ -516,7 +520,7 @@
   };
 
   Pages.sarcopenia = function () {
-    const patients = D().listPatients();
+    const patients = sarcPatients();
     const all = D().list();
     const focusId = activePatientId() || (patients.length ? (() => {
       let best = null, bn = -1;
@@ -1144,9 +1148,9 @@
 
   Pages.sarcopeniaAssess = function () {
     /* 若当前未绑定评估对象但已存在首诊登记，自动选中最近一位，避免直接进入评估页时「页面无显示」 */
-    if (!activePatientId() && D().listPatients().length) {
+    if (!activePatientId() && sarcPatients().length) {
       const d = D().getDraft() || {};
-      d.patientId = D().listPatients()[0].id;
+      d.patientId = sarcPatients()[0].id;
       if (!d.step) d.step = 1;
       if (!d.body) d.body = { smi: '', bodyFat: '', visceral: '', muscleMass: '', bmr: '', weight: '' };
       D().saveDraft(d);
