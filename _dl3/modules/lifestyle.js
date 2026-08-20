@@ -104,7 +104,7 @@
         out.innerHTML = '<div class="alert alert-warning">请先点击「生成生活方式干预报告」。</div>';
         return;
       }
-      out.innerHTML = window.buildReportDoc(null, 'lifestyle') +
+      out.innerHTML = '<div class="life-report-full">' + window.buildReportDoc(null, 'lifestyle') + '</div>' +
         `<div class="no-print" style="margin-top:12px;display:flex;gap:10px;">
           <button class="btn btn-primary btn-sm" id="btn-print-life">打印 / 导出本报告</button>
           <button class="btn btn-secondary btn-sm" id="btn-share-life">📲 分享二维码</button>

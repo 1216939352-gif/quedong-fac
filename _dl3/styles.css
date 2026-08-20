@@ -1652,6 +1652,14 @@ tr:hover td {
   margin: 0 auto;
   box-shadow: var(--shadow);
 }
+
+/* 诉求2：生活方式干预报告在页面内撑满屏幕（非打印窄版预览），打印时仍由 #report-print-stage 控制 */
+.life-report-full .report-doc {
+  max-width: 100%;
+  margin: 0;
+  box-shadow: none;
+  border-radius: 0;
+}
 .report-cover {
   text-align: center;
   padding-bottom: 20px;
@@ -2081,6 +2089,42 @@ select:disabled {
 .exercise-diagram svg {
   width: 80%;
   height: 80%;
+}
+
+/* ============ 智能方案「标准卡片式」共享布局（肌少症 / 脊柱 对齐体重管理 exerciseCard） ============ */
+.sc-ex-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.sc-ex-card { margin: 0; }
+.sc-ex-card .card-body { padding: 16px; }
+.sc-ex-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.sc-ex-idx {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--primary); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; flex-shrink: 0;
+}
+.sc-ex-idx-dev { background: #534AB7; }
+.sc-ex-name { font-size: 14px; line-height: 1.4; }
+.sc-ex-meta { font-size: 12.5px; line-height: 1.8; color: var(--text-secondary); margin-top: 4px; }
+.sc-k { color: var(--primary); font-weight: 600; }
+.sc-key { margin-top: 4px; }
+.sc-caution { margin-top: 6px; color: var(--danger); padding-top: 6px; border-top: 1px dashed var(--border); }
+.sc-dev-badge {
+  margin-left: auto; font-size: 11px; font-weight: 600;
+  background: #ede9fe; color: #534AB7; padding: 2px 8px; border-radius: 99px;
+}
+.sc-dev-name { font-size: 12px; color: #534AB7; margin: -4px 0 8px; font-weight: 600; }
+.sc-media { margin-top: 10px; }
+.sc-media .pmv-thumb { width: 100%; border-radius: 10px; cursor: pointer; }
+/* 打印版方案头部 */
+.sc-print-head { margin-bottom: 16px; }
+.sc-print-title { font-size: 18px; font-weight: 700; color: var(--text-primary); }
+.sc-print-sub { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+@media (max-width: 760px) {
+  .sc-ex-grid { grid-template-columns: 1fr; }
 }
 
 /* 红绿灯食物表 */

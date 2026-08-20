@@ -537,6 +537,15 @@
 
     const R = rec.result, pl = R.plan;
     const sections = sarcPlanSections(pl);
+    /* 富集动作库已上传的图片/视频：无则 SchemeCard 媒体块回退小Qoo 占位 */
+    try {
+      const lib = (window.DB && window.DB.getPlanLibrary) ? await window.DB.getPlanLibrary() : [];
+      sections.forEach(function (s) { s.items.forEach(function (it) {
+        if (it.device || it.img || it.video) return;
+        const m = lib.filter(function (x) { return x && x.name === it.name; })[0];
+        if (m) { if (m.image) it.img = m.image; if (m.video) it.video = m.video; }
+      }); });
+    } catch (e) {}
     const stat = (function () {
       let count = 0, video = 0;
       sections.forEach(function (s) { s.items.forEach(function (it) { count++; if (it.video) video++; }); });
@@ -553,9 +562,9 @@
     const sarcoTraceHtml = window.PlanView ? ('<div style="--ac:#0D9488;margin:0 0 14px;">' + PlanView.traceBar(sarcoTrace) + '</div>') : '';
 
     const isMobile = (window.innerWidth <= 760);
-    const planBodyHtml = isMobile
-      ? PlanView.renderE('sarcopenia', sections, { patientName: rec.patientName || '' })
-      : PlanView.renderD('sarcopenia', sections, { trace: sarcoTrace, stat: stat });
+    const planBodyHtml = window.SchemeCard
+      ? window.SchemeCard.renderPlan(sections, { mode: isMobile ? 'mobile' : 'pc', lib: 'sarc' })
+      : (isMobile ? PlanView.renderE('sarcopenia', sections, { patientName: rec.patientName || '' }) : PlanView.renderD('sarcopenia', sections, { trace: sarcoTrace, stat: stat }));
 
     const intro = '对象：' + U.esc(rec.patientName || '未选择') + '　性别：' + U.esc(rec.gender || '—') +
       '　年龄：' + U.esc(rec.age || '—') + '　首选：' + U.esc((pl.home && pl.home.title) || '徒手 + 设备综合') +
@@ -587,7 +596,7 @@
       list.innerHTML = sections.map(function (s) {
         return '<a data-sec="plsec"><span class="ic">•</span><span class="pl-rail-t">' + U.esc(s.cat) + '</span></a>';
       }).join('');
-      const secEls = (U.qs('#sar-plan-body', wrap) || wrap).querySelectorAll('.pv-section');
+      const secEls = (U.qs('#sar-plan-body', wrap) || wrap).querySelectorAll('.sc-section');
       Array.prototype.forEach.call(list.querySelectorAll('a'), function (a, i) {
         a.onclick = function () { if (secEls[i]) secEls[i].scrollIntoView({ behavior: 'smooth', block: 'start' }); };
       });
@@ -598,7 +607,6 @@
       U.toast('正在生成打印纸卡（含扫码）…', 'info');
       printSarcoPlan(pl, rec);
     };
-    if (window.PlanView && PlanView.bindPlay) PlanView.bindPlay(U.qs('#sar-plan-body', wrap));
     bindPatientBar(wrap);
     return wrap;
   };
@@ -618,6 +626,7 @@
             const st = it.status === 'recommend' ? '推荐' : it.status === 'forbidden' ? '禁止' : it.status === 'optional' ? '可选' : '';
             return {
               name: it.name || '动作',
+              posture: it.posture || '',
               levels: it.level || '',
               types: (st ? (st + ' · ') : '') + (it.posture ? ('体位：' + it.posture) : ''),
               dose: it.params || '',
@@ -625,6 +634,7 @@
               cautions: '',
               safety: [],
               device: '',
+              svg: (window.SarcExerciseLib && window.SarcExerciseLib.figureSVG) ? window.SarcExerciseLib.figureSVG(it.posture) : '',
               img: '',
               video: ''
             };
@@ -635,7 +645,7 @@
       secs.push({
         cat: '居家徒手训练',
         items: pl.home.actions.map(function (a) {
-          return { name: (Array.isArray(a) ? a[0] : a), levels: '', types: '', dose: '', steps: (pl.home.rules || []).join('；'), cautions: '', safety: [], device: '', img: '', video: '' };
+          return { name: (Array.isArray(a) ? a[0] : a), posture: '', levels: '', types: '', dose: '', steps: (pl.home.rules || []).join('；'), cautions: '', safety: [], device: '', svg: '', img: '', video: '' };
         })
       });
     }
@@ -678,6 +688,16 @@
     let stage = document.getElementById('report-print-stage');
     if (!stage) { stage = document.createElement('div'); stage.id = 'report-print-stage'; document.body.appendChild(stage); }
     const sections = sarcPlanSections(pl);
+    /* 打印版同样生成系统示意图 + 富集动作库媒体（与屏幕版一致） */
+    try {
+      const lib = (window.DB && window.DB.getPlanLibrary) ? await window.DB.getPlanLibrary() : [];
+      sections.forEach(function (s) { s.items.forEach(function (it) {
+        if (!it.device && !it.svg) it.svg = (window.SarcExerciseLib && window.SarcExerciseLib.figureSVG) ? window.SarcExerciseLib.figureSVG(it.posture) : '';
+        if (it.device || it.img || it.video) return;
+        const m = lib.filter(function (x) { return x && x.name === it.name; })[0];
+        if (m) { if (m.image) it.img = m.image; if (m.video) it.video = m.video; }
+      }); });
+    } catch (e) {}
     const exercises = [];
     sections.forEach(function (s) {
       const mcat = /抗阻/.test(s.cat) ? 'resistance' : /平衡/.test(s.cat) ? 'balance' : /拉伸|放松/.test(s.cat) ? 'flexibility' : /设备/.test(s.cat) ? 'device' : 'aerobic';
@@ -694,7 +714,9 @@
     } catch (e) { /* 二维码生成失败不影响打印 */ }
     const name = (rec.patientName || '') + ' 肌少症综合干预方案';
     const sub = '对象：' + (rec.patientName || '未选择') + '　性别：' + (rec.gender || '—') + '　年龄：' + (rec.age || '—') + '　频次：渐进抗阻为主';
-    const html = PlanView.renderF('sarcopenia', sections, { title: name, sub: sub, qrHtml: qrHtml });
+    const html = window.SchemeCard
+      ? window.SchemeCard.renderPlan(sections, { mode: 'print', lib: 'sarc', title: name, sub: sub, qrHtml: qrHtml })
+      : PlanView.renderF('sarcopenia', sections, { title: name, sub: sub, qrHtml: qrHtml });
     stage.innerHTML = html;
     const clear = () => { stage.innerHTML = ''; window.onafterprint = null; };
     window.onafterprint = clear;

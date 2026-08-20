@@ -356,6 +356,8 @@
             if (!(window.AIReason && window.AIReason.aiEnabled && window.AIReason.aiEnabled())) ba.style.display = 'none';
             ba.onclick = () => aiInterpret(S, bd);
           }
+          const bs = U.qs('#btn-sys-report', bd);
+          if (bs) bs.onclick = () => sysReport(S, bd);
         }
       },
       onComplete: (S) => { save(S, true); }
@@ -491,7 +493,11 @@
       '</div></div>' +
       '<div class="card mt-3"><div class="card-header"><h3 class="card-title"><span class="card-title-icon">' + qooIcon('sm') + '</span>鹊动小Qoo 报告解读</h3></div><div class="card-body">' +
       '<div style="font-size:13.5px;color:var(--text-muted);line-height:1.7;margin-bottom:14px;">由鹊动小Qoo 对 BMI、腰围、体脂、内脏脂肪、BMR、PQ-风险、活动水平等 25+ 项数据进行综合分析，输出风险判读、关键发现、建议与随访重点。</div>' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap;">' +
       '<button class="btn btn-ai btn-lg" id="btn-ai-interpret"><span class="ai-icon-wrap">' + qooIcon('sm') + '</span>打开 AI 解读报告（全屏）</button>' +
+      '<button class="btn btn-info btn-lg" id="btn-sys-report"><span class="ai-icon-wrap">' + qooIcon('sm') + '</span>📑 系统报告生成</button>' +
+      '</div>' +
+      '<div style="font-size:12.5px;color:var(--text-muted);line-height:1.6;margin-top:10px;">系统报告 = 综合评估（体格 / 体成分 / 能量代谢 / 生活方式）+ 鹊动肌力评估融合，可预览、打印、导出 PDF。</div>' +
       '</div></div>';
   }
 
@@ -567,6 +573,41 @@
         setTimeout(() => { w.print(); }, 400);
       } catch (e) { U.toast('导出失败：' + (e.message || e), 'error'); }
     };
+  }
+
+  /* 系统报告生成：综合评估 + 鹊动肌力评估融合（scope='full' 已含 renderStrengthSection），全屏预览 + 打印/导出/分享 */
+  async function sysReport(S, bd) {
+    const R = recompute(S), d = R.d;
+    if (!d.height || !d.weight || !d.restHR) { U.toast('请先填写身高、体重、静息心率再生成报告', 'warning'); return; }
+    if (!(window.buildReportDoc)) { U.toast('报告组件未加载', 'error'); return; }
+    /* 用当前综合评估计算结果填充 AppState.assessment，确保报告正文（体格/体成分/能量代谢）完整 */
+    try { AppState.assessment = d; } catch (e) {}
+    const html = window.buildReportDoc(null, 'full');
+    const modalRef = U.modal({
+      title: '鹊动 · 综合评估报告（系统生成 · 含肌力融合）',
+      body: '<div class="sys-report-preview">' + html + '</div>',
+      width: '100vw',
+      cls: 'ai-modal-full ac-step-fullscreen ac-ai-fullscreen',
+      footer:
+        '<div class="ac-hint">系统自动生成，须经专业人员确认</div>' +
+        '<button class="btn btn-secondary" id="sys-fs-close">关闭</button>' +
+        '<button class="btn btn-ghost" id="sys-fs-share">📲 分享二维码</button>' +
+        '<button class="btn btn-success" id="sys-fs-export">📄 打印 / 导出 PDF</button>'
+    });
+    const exportBtn = U.qs('#sys-fs-export', modalRef.overlay);
+    if (exportBtn) exportBtn.onclick = () => {
+      try {
+        const w = window.open('', '_blank');
+        if (!w) { U.toast('浏览器拦截了新窗口，请允许后重试', 'warning'); return; }
+        w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>鹊动综合评估报告</title><style>body{font-family:system-ui,"Microsoft YaHei",sans-serif;max-width:920px;margin:32px auto;padding:0 24px;color:#1a1a2e}.report-doc{line-height:1.85;font-size:14px}.report-h3{font-size:17px;font-weight:700;margin:0 0 16px;padding:10px 14px;background:#f0fdfa;border-left:4px solid #0d9488;border-radius:8px}h1,h2,h3{color:#0f172a}.report-sign{margin-top:24px;display:flex;justify-content:space-between;font-size:13px;color:#475569}.report-footer{margin-top:8px;font-size:12px;color:#94a3b8}</style></head><body>' + html + '</body></html>');
+        w.document.close();
+        setTimeout(() => { w.print(); }, 400);
+      } catch (e) { U.toast('导出失败：' + (e.message || e), 'error'); }
+    };
+    const shareBtn = U.qs('#sys-fs-share', modalRef.overlay);
+    if (shareBtn) shareBtn.onclick = () => { if (window.Share) window.Share.openReportQRModal('full'); else U.toast('分享组件未加载', 'warning'); };
+    const closeBtn = U.qs('#sys-fs-close', modalRef.overlay);
+    if (closeBtn) closeBtn.onclick = () => modalRef.close();
   }
 
   /* 指标卡片 */
