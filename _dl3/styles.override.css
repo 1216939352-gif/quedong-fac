@@ -171,6 +171,8 @@
 
 /* 功能导引页 */
 .page-guide { max-width: 960px; margin: 0 auto; padding: 8px 4px 40px; }
+/* 功能导引作为独立全屏页时去掉限宽，内容撑满 */
+.standalone-view .page-guide { max-width: none; margin: 0; padding-left: 4px; padding-right: 4px; }
 .guide-hero { background: linear-gradient(135deg, var(--primary-soft, #eef4ff), var(--card-bg, #fff)); border: 1px solid var(--border, #e3e8f0); border-radius: 16px; padding: 22px 26px; margin-bottom: 22px; }
 .guide-hero h2 { margin: 0 0 8px; font-size: 22px; }
 .guide-hero p { margin: 0; color: var(--text-muted); font-size: 14px; line-height: 1.7; }
