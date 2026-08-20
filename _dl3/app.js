@@ -1455,10 +1455,8 @@ const ROUTES = {
   '#/isokinetic-report': { title: '等速肌力报告解读', render: () => (Pages.isokineticReport ? Pages.isokineticReport() : '<div class="alert alert-warning">等速报告模块未加载</div>') },
   '#/isotonic-report': { title: '等张肌力报告解读', render: () => (Pages.isotonicReport ? Pages.isotonicReport() : '<div class="alert alert-warning">等张报告模块未加载</div>') },
   '#/devices': { title: '鹊动设备档案', render: () => Pages.devices() },
-  '#/report': { title: '报告管理中心', render: () => Pages.report() },
   '#/report-center': { title: '报告管理中心', render: () => Pages.reportCenter() },
-  '#/center': { title: '医生报告中心', render: () => Pages.center() },
-  '#/bigdata': { title: '体重管理看板', render: () => Pages.bigdata() },
+  '#/bigdata': { title: '鹊动FAC大数据看板', render: () => Pages.bigdata() },
   '#/styleguide': { title: '设计系统', render: () => Pages.styleguide() },
   '#/admin': { title: '系统管理后台', render: () => Pages.admin(), adminOnly: true },
   '#/accounts': { title: '账号管理', render: () => Pages.accounts(), superOnly: true },
@@ -1487,97 +1485,71 @@ const ROUTES = {
 
 // 功能导引页：把"系统能做什么"内置进系统，降低培训成本
 Pages.guide = function () {
-  // 最新业务流（v3）：两类人群 × 三大方向 + 共享肌力评估 + 方向化报告中心
+  // 当前业务流（v4）：三大单元（体重管理 / 老年肌少症&跌倒风险 / 青少年脊柱健康）+ 共享肌力评估 + 方向化报告中心
   var html = '<div class="page-guide">' +
 
     // —— 顶部概览 ——
     '<div class="guide-hero">' +
-      '<h2>🧭 功能导引 · 两类人群 × 三大方向</h2>' +
-      '<p>本系统围绕 <b>两类临床人群</b>（全年龄体重管理、老年肌少症-跌倒风险）展开，按 <b>统一登记 → 方向分流评估 → 方案干预 → 报告与看板</b> 主线组织。<br>' +
-      '所有功能入口在左侧导航栏；患者首诊登记入口在 <b>体重管理 → 体重管理台账</b> 页面的「＋ 新建患者登记」按钮里。</p>' +
+      '<h2>🧭 功能导引 · 三大单元 × 统一工作流</h2>' +
+      '<p>本系统围绕 <b>三大临床单元</b>（体重管理、老年肌少症与跌倒风险、青少年脊柱健康）展开，按 <b>统一登记 → 方向分流评估 → 方案干预 → 报告与看板</b> 主线组织。<br>' +
+      '所有功能入口在左侧导航栏；患者首诊登记入口在对应单元台账页面的「＋ 新建患者登记」按钮里。</p>' +
     '</div>' +
 
-    // —— 人群分流总览 ——
-    '<div class="guide-group"><h3>👥 业务主线 · 两条人群分流</h3><div class="guide-cards">' +
-      '<div class="guide-card guide-card-accent"><div class="guide-card-title">⚖️ 体重管理主线（全年龄 · 减重 / 增肌）</div>' +
+    // —— 三大单元总览 ——
+    '<div class="guide-group"><h3>🧩 业务主线 · 三大单元</h3><div class="guide-cards">' +
+      '<div class="guide-card guide-card-accent"><div class="guide-card-title">⚖️ 体重管理（全年龄 · 减重 / 增肌）</div>' +
         '<div class="guide-card-desc">适用 <b>所有年龄</b> 用户。重点评估体成分、能量代谢、生活方式、智能营养与运动处方。流程：登记 → 体重管理评估 → 生活方式问卷 → 智能方案生成 → 报告。</div></div>' +
-      '<div class="guide-card guide-card-accent"><div class="guide-card-title">🧓 老年肌少症-跌倒风险主线（≥60 岁）</div>' +
+      '<div class="guide-card guide-card-accent"><div class="guide-card-title">🧓 老年肌少症与跌倒风险（≥60 岁）</div>' +
         '<div class="guide-card-desc">适用 <b>60 周岁及以上</b> 老年用户。覆盖握力、步速、小腿围、体成分、SPPB、CFS、SARC-F、跌倒风险 5 子流程。10 步标准评估 + 跌倒风险完整嵌入。</div></div>' +
+      '<div class="guide-card guide-card-accent"><div class="guide-card-title">🦴 青少年脊柱健康（AIS 特发性脊柱侧弯）</div>' +
+        '<div class="guide-card-desc">适用 <b>青少年</b> 人群。首诊登记 → 功能评估（Cobb 角 / 体态 / 风险分层）→ 干预方案 → 随访复查。3D 仿真人体建模辅助评估。</div></div>' +
     '</div></div>' +
 
     // —— 四大步骤详细说明 ——
     '<div class="guide-group"><h3>🗺️ 工作流步骤</h3><div class="guide-cards">' +
-
-      '<div class="guide-card"><div class="guide-card-title">① 登记 · 体重管理台账</div>' +
-        '<div class="guide-card-desc"><b>入口</b>：左侧「体重管理 → 体重管理台账」页面右上角「＋ 新建患者登记」按钮。<br>' +
-        '<b>说明</b>：统一登记（不分方向），姓名 / 性别 / 年龄 / 身高 / 体重 / 病史 / 减重目标必填。完成后自动进入患者工作上下文，后续所有评估与方案归属该患者。<br>' +
-        '<b>入口已隐藏</b>：原左侧「新建登记」入口已整合到体重管理台账内，避免多入口产生歧义。</div></div>' +
-
-      '<div class="guide-card"><div class="guide-card-title">② 评估 · 按方向分流</div>' +
+      '<div class="guide-card"><div class="guide-card-title">① 登记 · 患者首诊</div>' +
+        '<div class="guide-card-desc"><b>入口</b>：对应单元台账页面右上角「＋ 新建患者登记」。<br>' +
+        '<b>说明</b>：统一登记（不分方向），姓名 / 性别 / 年龄 / 身高 / 体重 / 病史必填。完成后自动进入患者工作上下文，后续所有评估与方案归属该患者。</div></div>' +
+      '<div class="guide-card"><div class="guide-card-title">② 评估 · 按单元分流</div>' +
         '<div class="guide-card-desc">完成登记后，按临床需求进入对应方向评估：' +
         '<ul style="margin:6px 0 0;padding-left:18px;">' +
           '<li><b>体重管理评估</b>（体成分 / 腰围 / 血压 / 静息心率 / 能量代谢 / 运动风险自动判定）</li>' +
           '<li><b>生活方式问卷</b>（六维度问卷：饮食 / 运动 / 睡眠 / 压力 / 烟酒 / 认知）</li>' +
-          '<li><b>肌少症-跌倒风险评估</b>（10 步流程：1 禁忌筛查 → 2 基础信息 → 3 客观指标 → 4 专项问卷 → 5 自动运算 → 6 综合风险 → 7 评估报告 → 8 方案推荐 → <b>9 跌倒风险评估</b>（F1-F5 子步骤嵌入）→ 10 纳入台账）</li>' +
+          '<li><b>肌少症-跌倒风险评估</b>（10 步流程，含 F1-F5 跌倒风险子步骤）</li>' +
+          '<li><b>青少年脊柱健康评估</b>（Cobb 角 / 体态 / 风险分层）</li>' +
           '<li><b>肌力评估</b>（等速 / 等张，两类人群共用，可独立使用）</li>' +
         '</ul></div></div>' +
-
       '<div class="guide-card"><div class="guide-card-title">③ 方案 · 智能处方生成</div>' +
         '<div class="guide-card-desc">基于评估数据，自动匹配：' +
         '<ul style="margin:6px 0 0;padding-left:18px;">' +
-          '<li><b>体重管理</b>：营养处方 + 有氧 FITT-VP + 抗阻 / 柔韧 / 平衡 + 周日程（标准版 / 严谨版 AI 切换）</li>' +
-          '<li><b>老年肌少症-跌倒风险</b>：36 动作徒手方案 + 鹊动设备方案 + 跌倒预防专项方案（高危人群优先执行）</li>' +
+          '<li><b>体重管理</b>：营养处方 + 有氧 FITT-VP + 抗阻 / 柔韧 / 平衡 + 周日程</li>' +
+          '<li><b>老年肌少症-跌倒风险</b>：36 动作徒手方案 + 鹊动设备方案 + 跌倒预防专项方案</li>' +
+          '<li><b>青少年脊柱健康</b>：姿态矫正 + 运动干预 + 支具建议</li>' +
           '<li><b>肌力专项</b>：基于 1RM 配重的设备处方（等张）或峰力矩比对（等速）</li>' +
         '</ul></div></div>' +
-
-      '<div class="guide-card"><div class="guide-card-title">④ 报告 · 方向化中心</div>' +
-        '<div class="guide-card-desc"><b>入口</b>：左侧「报告中心」。<br>' +
-        '顶部 <b>三个方向 tab</b>：' +
-        '<ul style="margin:6px 0 0;padding-left:18px;">' +
-          '<li><b>体重管理</b>：综合评估报告 / 智能训练方案 / 生活方式评估报告</li>' +
-          '<li><b>老年肌少症-跌倒风险</b>：肌少症评估报告 / 跌倒风险评估报告</li>' +
-          '<li><b>肌力评估</b>：等速肌力评估报告 / 等张肌力评估报告</li>' +
-        '</ul>' +
-        '患者列表带方向徽章，可按方向筛选；选中患者后支持勾选多类报告 <b>组合导出打印</b>。</div></div>' +
-
+      '<div class="guide-card"><div class="guide-card-title">④ 报告与看板</div>' +
+        '<div class="guide-card-desc"><b>报告管理中心</b>（#/report-center）：顶部四个方向 tab——⚖️ 体重管理 / 🧓 肌少症 / 🦴 脊柱健康 / 💪 肌力报告解读；患者列表带方向徽章，支持勾选多类报告组合导出打印。<br>' +
+        '<b>大数据看板</b>（#/bigdata）：鹊动FAC大数据看板，三大方向人群分布与趋势钻取。</div></div>' +
     '</div></div>' +
 
-    // —— 各模块入口卡片（按导航分组） ——
+    // —— 各模块入口卡片 ——
     '<div class="guide-group"><h3>🧭 左侧导航 · 模块速查</h3><div class="guide-cards">' +
-      '<div class="guide-card"><div class="guide-card-title">🏠 体重管理台账</div>' +
-        '<div class="guide-card-desc">体重管理方向的 3D 卡片式患者列表 · 今日关注 · 工作流进度 · 周期复测提醒 · 方案库速览。<br>右上「＋ 新建患者登记」是 <b>唯一患者登记入口</b>。</div></div>' +
-      '<div class="guide-card"><div class="guide-card-title">📊 体重管理评估</div>' +
-        '<div class="guide-card-desc">体格测量 / 体成分 / 血压 / 静息心率 / 能量代谢（BMR + TDEE + 减重计划）/ 运动风险自动判定。</div></div>' +
-      '<div class="guide-card"><div class="guide-card-title">🌿 生活方式问卷</div>' +
-        '<div class="guide-card-desc">六维度问卷独立生成生活方式报告，输出评分与维度明细，用于行为干预。</div></div>' +
-      '<div class="guide-card"><div class="guide-card-title">🎯 智能方案生成</div>' +
-        '<div class="guide-card-desc">体重管理方案页：营养 + 有氧 + 抗阻 + 柔韧 + 平衡 + 周日程，含 AI 严谨版开关与一键配图。</div></div>' +
-      '<div class="guide-card"><div class="guide-card-title">🧓 肌少症-跌倒风险台账</div>' +
-        '<div class="guide-card-desc">本模块的 3D 卡片式患者名册 · 评估台账（含分级筛选 / 搜索 / 排序） · 随访复查趋势对比 · 严蒪版方案引擎。</div></div>' +
-      '<div class="guide-card"><div class="guide-card-title">🩺 肌少症-跌倒风险评估</div>' +
-        '<div class="guide-card-desc">10 步标准评估：<br>' +
-        '1 禁忌筛查 → 2 基础信息同步 → 3 客观指标录入 → 4 专项问卷 → 5 自动运算 → 6 综合风险 → 7 评估报告 → 8 方案推荐 → <b>9 跌倒风险评估</b>（F1 跌倒史 / F2 平衡 / F3 步态 / F4 感觉认知环境 / F5 风险报告与方案）→ 10 纳入台账。</div></div>' +
-      '<div class="guide-card"><div class="guide-card-title">⚙️🏋️ 肌力评估（等速 / 等张）</div>' +
-        '<div class="guide-card-desc">两类人群共用 · 可独立使用：<br>' +
-        '<b>等速</b>：连接鹊动等速设备测峰力矩 / 双侧不对称 / 报告 OCR 自动识别。<br>' +
-        '<b>等张</b>：测 1RM，自动换算训练负荷用于方案配重。</div></div>' +
-      '<div class="guide-card"><div class="guide-card-title">📑 报告中心</div>' +
-        '<div class="guide-card-desc">按方向查看 / 打印 / 导出报告。<br>顶部三 tab：⚖️ 体重管理 / 🧓 老年肌少症-跌倒风险 / ⚙️ 肌力评估。<br>另含等速 / 等张报告解读独立入口。</div></div>' +
-      '<div class="guide-card"><div class="guide-card-title">🚀 数据看板中心</div>' +
-        '<div class="guide-card-desc">大数据看板（含体重管理 / 老年肌少症 / 跌倒风险三大方向）。点击进入后可切换方向、钻取人群分布与趋势。</div></div>' +
-      '<div class="guide-card"><div class="guide-card-title">🔧🃏 设备与方案库</div>' +
-        '<div class="guide-card-desc">鹊动设备档案（9 台设备参数 + 处方说明）+ 运动方案库管理（管理员编辑动作）。</div></div>' +
-      '<div class="guide-card"><div class="guide-card-title">📚💬 资讯与消息</div>' +
-        '<div class="guide-card-desc">医生查看资讯中心 / 系统消息；管理员可发布与管理。资料库与系统消息互通。</div></div>' +
-      '<div class="guide-card"><div class="guide-card-title">⚡ 系统设置</div>' +
-        '<div class="guide-card-desc">管理员账号、配置与权限管理。</div></div>' +
+      '<div class="guide-card"><div class="guide-card-title">⚖️ 体重管理</div><div class="guide-card-desc">台账 · 评估 · 生活方式问卷 · 智能方案 · 报告。</div></div>' +
+      '<div class="guide-card"><div class="guide-card-title">🧓 老年肌少症与跌倒风险</div><div class="guide-card-desc">台账 · 10 步评估 · 跌倒风险 · 方案。</div></div>' +
+      '<div class="guide-card"><div class="guide-card-title">🦴 青少年脊柱健康</div><div class="guide-card-desc">台账 · 功能评估（Cobb 角）· 干预方案 · 3D 建模。</div></div>' +
+      '<div class="guide-card"><div class="guide-card-title">⚙️🏋️ 肌力评估（等速 / 等张）</div><div class="guide-card-desc">两类人群共用 · 可独立使用；报告解读入口在报告管理中心。</div></div>' +
+      '<div class="guide-card"><div class="guide-card-title">📑 报告管理中心</div><div class="guide-card-desc">四大方向报告查看 / 打印 / 导出；肌力报告解读独立入口。</div></div>' +
+      '<div class="guide-card"><div class="guide-card-title">🚀 大数据看板</div><div class="guide-card-desc">鹊动FAC大数据看板：体重管理 / 老年肌少症 / 跌倒风险 / 脊柱健康人群分布与趋势。</div></div>' +
+      '<div class="guide-card"><div class="guide-card-title">📢💬 资讯与消息中心</div><div class="guide-card-desc">医生查看资讯 / 系统消息；管理员可发布与管理。从 Portal 首页进入。</div></div>' +
+      '<div class="guide-card"><div class="guide-card-title">🔧🃏 设备与方案库</div><div class="guide-card-desc">鹊动设备档案 + 运动方案库管理（管理员编辑动作）。</div></div>' +
     '</div></div>' +
 
-    // —— 底部提示 ——
     '<div class="guide-foot">遇到问题点右下角 <b>鹊动小Qoo</b> 随时问；功能有更新本页同步更新。</div>' +
   '</div>';
   return html;
 };
+
+
 
 // 青少年脊柱健康管理（预留模块占位页）：沿用同一套框架，后续独立开发，不重构导航
 Pages.spineComing = function () {
@@ -1600,7 +1572,7 @@ Pages.spineComing = function () {
 function route() {
   const hash = location.hash || '#/home';
   // 路由别名归一化：重复入口统一重定向到主路由（保留书签/调用方兼容，避免双报告中心/双设备档案/双资讯入口）
-  const ROUTE_ALIASES = { '#/center': '#/report', '#/assets': '#/devices', '#/info-center': '#/info' };
+  const ROUTE_ALIASES = { '#/center': '#/report-center', '#/report': '#/report-center', '#/assets': '#/devices', '#/info-center': '#/info' };
   if (ROUTE_ALIASES[hash]) { location.hash = ROUTE_ALIASES[hash]; return; }
   const main = U.qs('#main-content');
   if (!main) return;
@@ -1697,6 +1669,8 @@ function renderPortal() {
     { id: 'bigdata', title: '大数据看板', icon: '🚀', color: 'var(--info)', desc: '三大方向人群分布与趋势', hash: '#/bigdata' },
     { id: 'settings', title: '系统设置', icon: '⚙️', color: 'var(--warning)', desc: '账号 · 配置 · 权限', hash: '#/admin', adminOnly: true },
     { id: 'report-center', title: '报告管理中心', icon: '📑', color: 'var(--primary)', desc: '三单元报告 · 检索 · 预览 · 导出打印', hash: '#/report-center' },
+    { id: 'info', title: '资讯与消息中心', icon: '📢', color: 'var(--info)', desc: '资讯发布 · 系统消息 · 接收人管理', hash: '#/info' },
+    { id: 'guide', title: '系统引导', icon: '🧭', color: 'var(--primary)', desc: '功能导览 · 操作流程指引', hash: '#/guide' },
     { id: 'ops', title: '运维中心', icon: '🛡️', color: 'var(--danger)', desc: '运维台 · 纠错 · 开关', hash: '#/ops', superOnly: true }
   ];
   const visible = cards.filter(c => (!c.adminOnly || isAdminRole(role)) && (!c.superOnly || isSuperRole(role)));

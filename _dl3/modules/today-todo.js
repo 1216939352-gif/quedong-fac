@@ -213,7 +213,7 @@
       <div class="card-header">
         <h3 class="card-title"><span class="card-title-icon">📌</span>今日待办 · 体重管理</h3>
         <span class="badge ${todo.total ? 'badge-warning' : 'badge-success'}">${todo.total} 条待办</span>
-        <a href="#/bigdata" class="btn btn-ghost btn-sm no-print" style="margin-left:auto;">体重管理看板 →</a>
+        <a href="#/bigdata" class="btn btn-ghost btn-sm no-print" style="margin-left:auto;">鹊动FAC大数据看板 →</a>
       </div>
       <div class="card-body">
         ${empty}

@@ -268,7 +268,7 @@
 
   function renderBdShell(dir) {
     const titleMap = {
-      weight: '🚀 体重管理看板 · 鹊动健康数据总览',
+      weight: '🚀 鹊动FAC大数据看板 · 鹊动健康数据总览',
       sarcopenia: '🧓 老年肌少症-跌倒风险 · 数据看板',
       fall: '🤸 跌倒风险 · 数据看板',
       spine: '🦴 青少年脊柱健康 · 数据看板'
@@ -368,7 +368,7 @@
     document.querySelectorAll('.bd-dir-seg-btn').forEach(b => b.classList.toggle('is-active', b.dataset.bdDir === dir));
     // 切换 hero 标题
     const titleMap = {
-      weight: '🚀 体重管理看板 · 鹊动健康数据总览',
+      weight: '🚀 鹊动FAC大数据看板 · 鹊动健康数据总览',
       sarcopenia: '🧓 老年肌少症-跌倒风险 · 数据看板',
       fall: '🤸 跌倒风险 · 数据看板',
       spine: '🦴 青少年脊柱健康 · 数据看板'
