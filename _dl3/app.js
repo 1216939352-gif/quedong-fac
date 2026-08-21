@@ -1023,7 +1023,7 @@ const STANDALONE_ROUTES = {
   '#/bigdata': 1, '#/admin': 1, '#/accounts': 1, '#/ops': 1,
   '#/ops-correct': 1, '#/ops-switch': 1, '#/errlog': 1,
   '#/info-admin': 1, '#/msg-admin': 1, '#/info-groups': 1, '#/action-library': 1,
-  '#/assets': 1,  // 鹊动设备档案库：全屏独立页，不显示左侧导航
+  '#/devices': 1, '#/assets': 1,  // 鹊动设备档案（#/devices 主路由 + #/assets 别名）：全屏独立页，不显示左侧导航
   '#/report': 1, '#/report-center': 1, '#/info': 1, '#/msg-center': 1, '#/guide': 1  // 报告管理中心 + 资讯与消息中心 + 功能导引：全屏独立页，去掉左侧单元导航栏
 };
 
