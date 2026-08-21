@@ -130,6 +130,10 @@
 
       let currentModel = null;
       let modelNorm = 3.6; // 归一化身高（放大人物，突出显示）
+      const CACHE_BUST = '?v=20260821'; // 强制刷新浏览器对 GLB 大文件的缓存，避免旧缓存导致模型“不显示”
+      function cacheBust(url) {
+        return url.indexOf('?') === -1 ? url + CACHE_BUST : url + '&_v=20260821';
+      }
 
       function makeLogoSprite() {
         const cv = document.createElement('canvas');
@@ -153,7 +157,7 @@
 
       function loadModel(url, isPlaceholder) {
         const loader = new GLTFLoader();
-        loader.load(url, function (gltf) {
+        loader.load(cacheBust(url), function (gltf) {
           if (currentModel) { humanGroup.remove(currentModel); }
           const model = gltf.scene;
           const box = new THREE.Box3().setFromObject(model);

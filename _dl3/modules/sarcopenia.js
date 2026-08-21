@@ -943,7 +943,8 @@
 
       /* 真实 3D 老人（失败不影响盾牌显示） */
       const loader = new GLTFLoader();
-      loader.load('assets/elder_20260816.glb', function (gltf) {
+      const CACHE_BUST_ELDER = '?v=20260821';
+      loader.load('assets/elder_20260816.glb' + CACHE_BUST_ELDER, function (gltf) {
         const model = gltf.scene;
         const box = new THREE.Box3().setFromObject(model);
         const size = box.getSize(new THREE.Vector3());
@@ -974,6 +975,12 @@
         const distX = halfW / (tanHalf * camera.aspect); // 水平约束（已除 aspect，避免宽屏推远）
         camera.position.z = Math.max(distY, distX) * 1.06;
         camera.position.y = 0;
+        /* 关键修复：相机必须对准老人模型视觉中心。
+           model.position 是模型本地原点在世界中的位置，经过旋转/缩后未必等于视觉中心；
+           因此用 setFromObject 重新计算世界包围盒中心并对准它，才能保证模型完整出现在画面内。 */
+        const worldBox = new THREE.Box3().setFromObject(model);
+        const worldCenter = worldBox.getCenter(new THREE.Vector3());
+        camera.lookAt(worldCenter);
       }, undefined, function (err) {
         console.warn('[shield3D] 老人模型加载失败，仅显示盾牌环', err);
         var em = (err && err.message) ? err.message : String(err);
