@@ -166,7 +166,8 @@
         ? '<div class="sc-print-head"><div class="sc-print-title">' + esc(opts.title) + '</div>' +
           (opts.sub ? '<div class="sc-print-sub">' + esc(opts.sub) + '</div>' : '') + '</div>'
         : '';
-      return '<div class="report-doc sarc-doc sc-print-doc">' + head + body +
+      var wrapCls = 'report-doc sarc-doc sc-print-doc' + (lib === 'spine' ? ' spine-print' : '');
+      return '<div class="' + wrapCls + '">' + head + body +
         '<div class="report-sign"><div>评估医师签名：____________</div><div>日期：____________</div></div>' +
         '<div class="report-footer">本报告依据国家减重指南与 ACSM 运动处方规范生成，仅供临床参考。</div></div>';
     }

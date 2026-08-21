@@ -155,7 +155,7 @@
     }).join('') + '</div>';
   }
 
-  function planCard(p, isPrefer, badge) {
+  function planCard(p, isPrefer, badge, diet) {
     var isDeviceObj = p.devices && p.devices.length && typeof p.devices[0] === 'object';
     var detailHTML, label;
     if (isDeviceObj) {
@@ -182,6 +182,7 @@
         ${p.intensity ? `<div class="sarc-kv"><span>强度标准</span><p>${U.esc(p.intensity)}</p></div>` : ''}
         <div class="sarc-kv"><span>${label}</span>${detailHTML}</div>
         ${p.rules ? `<div class="sarc-kv"><span>专属规则</span><ul>${p.rules.map(r => `<li>${U.esc(r)}</li>`).join('')}</ul></div>` : ''}
+        ${diet && diet.length ? `<div class="sarc-kv sarc-kv-diet"><span>饮食营养</span><table class="sarc-diet-tbl"><tbody>${diet.map(x => `<tr><td><b>${U.esc(x[0])}</b></td><td>${U.esc(x[1])}</td></tr>`).join('')}</tbody></table></div>` : ''}
       </div>
     </div>`;
   }
@@ -2099,9 +2100,9 @@
                 </div>
                 ${renderTabs('main-plan', [
                   { id: 'home', icon: '🏠', label: '徒手方案', prefer: pref.prefer === 'home', alt: pref.prefer === 'device',
-                    html: planCard(plan.home, pref.prefer === 'home', '居家零设备') + (plan.home && plan.home.exercisePlan ? exercisePlanHTML(plan.home.exercisePlan, true) : '') },
+                    html: planCard(plan.home, pref.prefer === 'home', '居家零设备', plan.diet) + (plan.home && plan.home.exercisePlan ? exercisePlanHTML(plan.home.exercisePlan, true) : '') },
                   { id: 'device', icon: '🏥', label: '鹊动设备方案', prefer: pref.prefer === 'device', alt: pref.prefer === 'home',
-                    html: planCard(plan.device, pref.prefer === 'device', '机构量化') }
+                    html: planCard(plan.device, pref.prefer === 'device', '机构量化', plan.diet) }
                 ])}
                 <div class="sarc-kv" style="margin-top:16px;"><span>有氧安排</span><p>${U.esc(plan.aerobic)}</p></div>
                 <div class="sarc-kv" style="margin-top:12px;"><span>双方案统一适配原则（老年人专属）</span>
@@ -2121,6 +2122,7 @@
                       基于评估结果，由鹊动小Qoo AI 辅助生成个性化干预方案。生成后须经专业人员确认，可与左侧「标准版」「严谨版」对照使用。</p></div>
                   </div>
                   <div id="sarc-ai-plan-host"></div>
+                  <div id="sarc-ai-nutrition-host" class="sarc-ai-nutrition-host"></div>
                 </div>
               </div></div>
 
@@ -2560,13 +2562,42 @@
             };
           });
         }
+        /* P2：基于评估动态生成「营养干预强制指令」，注入 AI 方案上下文，
+         * 确保「鹊动小Qoo AI 方案推荐」必含饮食营养章节（后端 generate-plan 透传整个 context 给模型） */
+        function buildNutritionDirective(R) {
+          const diet = (R && R.plan && R.plan.diet) || [];
+          if (!diet.length) return '';
+          const lines = diet.map(x => (x[0] ? x[0] + '：' : '') + (x[1] || ''));
+          return '【饮食营养干预（方案必须包含此章节）】\n' + lines.join('\n') +
+            '\n请依据上述营养评估结果与要点，在「鹊动小Qoo AI 方案推荐」中输出完整的饮食营养干预章节：' +
+            '含每日蛋白质摄入目标(g/kg)、三餐/加餐安排、口服营养补充(ONS)与维生素D/钙建议、进餐顺序等，并与运动处方并列呈现。';
+        }
         function enrichAI() {
           const host = U.qs('#sarc-ai-plan-host', bodyEl);
-          if (!host || !window.AIReason) return;
-          if (host.dataset.aiWired === '1') return;
-          host.dataset.aiWired = '1';
-          try { window.AIReason.aiControls(host, compute(), {}); }
-          catch (e) { console.warn('[sarcopenia] AI 控件注入失败', e); }
+          if (!host) return;
+          if (!host.dataset.aiWired) {
+            host.dataset.aiWired = '1';
+            if (window.AIReason) {
+              try {
+                const R = compute();
+                if (R && R.plan) R.nutritionDirective = buildNutritionDirective(R);
+                window.AIReason.aiControls(host, R, {});
+              } catch (e) { console.warn('[sarcopenia] AI 控件注入失败', e); }
+            }
+          }
+          // P2 增强：AI 方案视图常驻「系统内置营养干预」卡片——即便模型未主动输出营养章节，
+          // 用户也必能看到基于评估实时生成的个性化营养方案（与 AI 自由生成方案并列呈现）。
+          try {
+            const R = compute();
+            const nh = U.qs('#sarc-ai-nutrition-host', bodyEl);
+            if (nh && R && R.plan && R.plan.diet && R.plan.diet.length) {
+              nh.innerHTML = '<div class="sarc-ai-nutrition-card">' +
+                '<div class="sanc-head">🍽️ 系统内置 · 饮食营养干预（依据评估自动生成）</div>' +
+                '<table class="sarc-diet-tbl"><tbody>' +
+                R.plan.diet.map(x => `<tr><td><b>${U.esc(x[0])}</b></td><td>${U.esc(x[1])}</td></tr>`).join('') +
+                '</tbody></table></div>';
+            }
+          } catch (e) { /* noop */ }
         }
         if ((S.planView || 'std') === 'ai') enrichAI();
         const sw = U.qs('#btn-switch-prefer', bodyEl);

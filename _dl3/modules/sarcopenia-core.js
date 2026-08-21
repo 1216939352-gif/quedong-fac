@@ -997,6 +997,40 @@
   }
 
   /** 组装完整干预方案 */
+  /* ============ 营养干预方案动态生成（P0：消费营养评估输入，消除与 diet 模板的断链） ============
+   * 基于方向模板 base.diet（保留蛋白/控糖/钙VD 基础文案），叠加个体化条目：
+   *   · MNA-SF ≤11（营养不良风险）→ 营养科会诊 + 高蛋白(1.2–1.5 g/kg) + 必要时 ONS 400 kcal/d
+   *   · proteinFreq=2（很少摄入）→ 三餐均有优质蛋白
+   *   · appetite=2（明显下降）→ 少量多餐 + 餐前开胃 + 必要时 ONS
+   *   · malnutrition=2（低蛋白血症）→ 上限 1.5 g/kg·实际体重 + 监测白蛋白
+   *   · weightChange=2（下降>3kg）→ 提升能量密度 + 加餐 + 复测体重
+   * 入参：key=方向键；mnasf=evalMnaSF 结果(含 total/atRisk)；life=原始 S.life(含 proteinFreq 等 0/1/2 分值)
+   * 返回：[label, text] 二维数组，与 plan.diet 渲染兼容。 */
+  function nutritionPlan(key, mnasf, life) {
+    var base = PLAN_LIB[key] || PLAN_LIB.maintain;
+    var diet = (base.diet || []).map(function (x) { return x.slice(); }); // 复制，避免污染共享模板
+    var m = mnasf || {};
+    var l = life || {};
+    var total = (typeof m.total === 'number') ? m.total : null;
+    var atRisk = m.atRisk != null ? !!m.atRisk : (total != null ? total <= 11 : false);
+    var scoreTxt = total != null ? (total + ' 分') : '';
+
+    if (atRisk) {
+      diet.push(['营养风险', 'MNA-SF ' + scoreTxt + '≤11 提示营养不良风险：建议营养科会诊，制定高蛋白（1.2–1.5 g/kg·实际体重）、充足热量饮食方案；必要时口服营养补充（ONS）400 kcal/d 高蛋白配方。']);
+    } else {
+      diet.push(['营养维持', 'MNA-SF ' + scoreTxt + '营养状态良好，仍需保证每日优质蛋白与维生素 D 摄入。']);
+    }
+    var pf = (l.proteinFreq != null) ? Number(l.proteinFreq) : null;
+    if (pf === 2) diet.push(['蛋白质摄入', '每日肉蛋奶摄入很少，须保证三餐均有优质蛋白（蛋/奶/鱼/禽/豆制品），避免单次过量；加餐可选无糖酸奶、水煮蛋。']);
+    var ap = (l.appetite != null) ? Number(l.appetite) : null;
+    if (ap === 2) diet.push(['食欲', '近期食欲明显下降：少量多餐、餐前轻微活动开胃、提升膳食能量密度；必要时 ONS 补充。']);
+    var mal = (l.malnutrition != null) ? Number(l.malnutrition) : null;
+    if (mal === 2) diet.push(['低蛋白血症', '已提示低蛋白血症：蛋白按上限 1.5 g/kg·实际体重，优先易吸收蛋白，监测前白蛋白/白蛋白。']);
+    var wc = (l.weightChange != null) ? Number(l.weightChange) : null;
+    if (wc === 2) diet.push(['体重下降', '近 3 月体重下降>3 kg：提升膳食能量密度、增加加餐、排查进食困难，2–4 周复测体重。']);
+    return diet;
+  }
+
   function buildPlan(direction, fall, ctx) {
     const base = PLAN_LIB[direction.key] || PLAN_LIB.maintain;
     const tier = FALL_PLAN.tiers[fall.levelKey];
@@ -1031,7 +1065,7 @@
       home: Object.assign({}, base.home, { exercisePlan }),
       device: base.device,
       aerobic: base.aerobic,
-      diet: base.diet,
+      diet: nutritionPlan(direction.key, ctx.mnasf, ctx.life),
       lifestyle: base.lifestyle,
       principles: COMMON_PRINCIPLES,
       fall: {
@@ -1103,7 +1137,7 @@
       age, gender, bmi, body, sppb, gaitEval, gripEval, calfEval, cfs, sarcf,
       scene: draft.scene || 'store',
       hasDevice: draft.hasDevice !== false,
-      fallHistory, jointIssue
+      fallHistory, jointIssue, mnasf, life: draft.life
     });
 
     return { gender, age, calfEval, gripEval, gaitEval, body, sppb, cfs, sarcf, life, strength, fall, direction, plan, mnasf, amt, fearFall, health: draft.health, exam: draft.exam, exercise: draft.exercise, jointIssue, fallHistory, bmi };

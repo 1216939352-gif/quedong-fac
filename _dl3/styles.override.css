@@ -3155,6 +3155,37 @@ html[data-theme="dark"] .portal-card.pg-card { background:linear-gradient(145deg
   .plan-print .pv-media { max-height: 120px; }
   .plan-print .pv-media img { max-height: 120px; }
 }
+
+/* ============ 脊柱智能方案打印重排（spine-print）：手动双列 / 设备三列 / 缩图 / 隐媒体 / 整卡不拆 ============ */
+/* 仅作用于脊柱单元打印（.sc-print-doc.spine-print），不影响体重/肌少症打印布局 */
+@media print {
+  .sc-print-doc.spine-print .sc-ex-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .sc-print-doc.spine-print .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .sc-print-doc.spine-print .sc-section { break-inside: avoid; margin: 14px 0; border: 1px solid var(--border-color, #e2e8f0); border-radius: 10px; overflow: hidden; }
+  .sc-print-doc.spine-print .sc-section > .card-header { background: #f7f7fb; padding: 8px 14px; border-bottom: 1px solid var(--border-color, #e2e8f0); break-after: avoid; }
+  .sc-print-doc.spine-print .sc-section > .card-header h3 { margin: 0; font-size: 14px; font-weight: 700; }
+  .sc-print-doc.spine-print .sc-section > .card-body { padding: 12px 14px; }
+  .sc-print-doc.spine-print .sc-ex-card { margin: 0; border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; break-inside: avoid; page-break-inside: avoid; background: #fff; }
+  .sc-print-doc.spine-print .sc-ex-card .card-body { padding: 9px 11px; }
+  .sc-print-doc.spine-print .sc-ex-head { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
+  .sc-print-doc.spine-print .sc-ex-idx { width: 21px; height: 21px; font-size: 11px; }
+  .sc-print-doc.spine-print .sc-ex-idx-dev { background: #534AB7; }
+  .sc-print-doc.spine-print .sc-ex-name { font-size: 12.5px; font-weight: 700; line-height: 1.35; }
+  /* 示意图缩到右上角，不独占一行 */
+  .sc-print-doc.spine-print .exercise-diagram { width: 56px; height: 56px; float: right; margin: 0 0 4px 8px; background: none; border-radius: 0; }
+  .sc-print-doc.spine-print .exercise-diagram svg { width: 56px; height: 56px; }
+  .sc-print-doc.spine-print .sc-ex-meta { font-size: 11.5px; line-height: 1.55; color: var(--text-secondary, #475569); }
+  .sc-print-doc.spine-print .sc-k { color: var(--primary); font-weight: 600; }
+  .sc-print-doc.spine-print .sc-key { margin-top: 3px; }
+  .sc-print-doc.spine-print .sc-caution { margin-top: 4px; color: var(--danger, #dc2626); padding-top: 4px; border-top: 1px dashed var(--border-color, #e2e8f0); font-size: 11px; }
+  .sc-print-doc.spine-print .sc-dev-badge { margin-left: auto; font-size: 10px; font-weight: 600; background: #ede9fe; color: #534AB7; padding: 2px 7px; border-radius: 99px; }
+  .sc-print-doc.spine-print .sc-dev-name { font-size: 11px; color: #534AB7; margin: -2px 0 5px; font-weight: 600; }
+  /* 打印省略大示范图（保留文字要点），与预览方案一致 */
+  .sc-print-doc.spine-print .sc-media { display: none !important; }
+  .sc-print-doc.spine-print .sc-print-head { margin-bottom: 14px; border-bottom: 2px solid var(--primary); padding-bottom: 8px; }
+  .sc-print-doc.spine-print .sc-print-title { font-size: 19px; font-weight: 700; }
+  .sc-print-doc.spine-print .sc-print-sub { font-size: 12.5px; color: var(--text-muted, #64748b); margin-top: 4px; }
+}
 @media (max-width: 760px) {
   .pv-list { grid-template-columns: 1fr; }
   .pv-card { grid-template-columns: 110px 1fr; }
@@ -3199,6 +3230,15 @@ html[data-theme="dark"] .portal-card.pg-card { background:linear-gradient(145deg
 .sarc-diet-tbl td { padding: 6px 8px; border-top: 1px dashed var(--border); vertical-align: top; }
 .sarc-diet-tbl td:first-child { width: 38%; color: var(--text-secondary); white-space: nowrap; }
 .sarc-diet-tbl tr:first-child td { border-top: none; }
+/* AI 方案视图常驻的「系统内置营养干预」卡片（P2 增强：确保用户必见营养方案） */
+.sarc-ai-nutrition-host { margin-top: 16px; }
+.sarc-ai-nutrition-card {
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-left: 4px solid var(--primary, #2563eb);
+  border-radius: 12px; padding: 12px 14px;
+  background: linear-gradient(180deg, rgba(56,132,255,.05), rgba(56,132,255,.02));
+}
+.sarc-ai-nutrition-card .sanc-head { font-weight: 700; font-size: 13px; color: var(--text-primary, #1e293b); margin-bottom: 8px; }
 
 /* ============ 报告管理中心（跨单元聚合） ============ */
 .rc-page { padding: 4px 0 28px; }
