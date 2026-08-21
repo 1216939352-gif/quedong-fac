@@ -669,18 +669,9 @@ function initLoginV3() {
     if (revealed) return;
     revealed = true;
     page.classList.add('login-visible');
-    /* 先做一次基础远→近汇聚，给用户"看到效果"的感觉 */
+    /* 鼠标下滑时做一次基础远→近汇聚，演示一次即可（不自动循环） */
     startConverge();
-    /* 同时启用持续性的远→近汇聚循环，每 4.2s 一次，让用户随时能看到粒子动画 */
-    const timer = setInterval(function () {
-      if (!revealed) { clearInterval(timer); return; }
-      startConverge();
-    }, 4200);
-    window.__loginConvergeLoopTimer = timer;
   }
-
-  // 进入页面 0.8s 后自动触发汇聚动效（让初次访问者也能看到 3D 粒子汇聚效果）
-  setTimeout(() => { if (!revealed) revealLogin(); }, 800);
 
   // 进一步：登录卡片显示完成后 1.6s 再触发第二轮「远→近」粒子回卷
   let convSecond = false;
