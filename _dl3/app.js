@@ -1656,6 +1656,10 @@ function renderPortal() {
     let off = i - a;
     if (off > len / 2) off -= len;
     if (off < -len / 2) off += len;
+    // 卡片位移 CSS 仅定义 data-off -4..4；超过范围强制收敛到边缘，
+    // 避免无匹配规则时卡片回退到 left:50%/top:50% 且 transform:none 导致错位
+    if (off > 4) off = 4;
+    if (off < -4) off = -4;
     return off;
   }
   // 卡片内部为上下结构：上=模块名（+引导语），下=模块图标，右下=半透明吉祥物小 Qoo
@@ -1669,28 +1673,84 @@ function renderPortal() {
       + '<img class="pc-qoo" src="assets/qoo.png" alt="" aria-hidden="true" loading="lazy">'
       + '</button>';
   }
-  main.innerHTML = '<div class="portal preload portal-game portal-v2">'
-    /* 3D 流动粒子背景已移除（用户 8/18 要求） */
+  const collapsed = (localStorage.getItem('portalLeftCollapsed') === '1');
+  const kpiData = [
+    ['今日评估', '12', '+3', 'var(--primary)'],
+    ['在管用户', '348', '+12', 'var(--info)'],
+    ['风险预警', '5', '待处理', 'var(--danger)'],
+    ['待办任务', '8', '2项今日', 'var(--warning)']
+  ];
+  const kpiHTML = kpiData.map(function (k) {
+    return '<div class="pl-kpi" style="--kc:' + k[3] + '">'
+      + '<span class="pl-kpi-bar"></span>'
+      + '<div class="pl-kpi-label">' + k[0] + '</div>'
+      + '<div class="pl-kpi-val">' + k[1] + '<span class="pl-kpi-trend">' + k[2] + '</span></div>'
+      + '</div>';
+  }).join('');
+  const newsHTML = [
+    ['var(--primary)', '《老年肌少症评估规范（2026版）》已更新，请查看'],
+    ['var(--info)', '新增脊柱侧弯筛查量表（AIS-12）上线']
+  ].map(function (n) {
+    return '<div class="pl-news"><span class="pl-dot" style="background:' + n[0] + '"></span><div class="pl-news-t">' + n[1] + '</div></div>';
+  }).join('');
+
+  main.innerHTML = '<div class="portal preload portal-v3' + (collapsed ? ' is-collapsed' : '') + '">'
+    // 背景装饰（克制：FAC 水印 + 小Qoo + 柔和光晕）
+    + '<div class="portal-bg" aria-hidden="true">'
+    +   '<div class="pbg-fac pbg-fac-a">FAC</div>'
+    +   '<div class="pbg-fac pbg-fac-b">FAC</div>'
+    +   '<div class="pbg-glow pbg-glow-1"></div>'
+    +   '<div class="pbg-glow pbg-glow-2"></div>'
+    +   '<img class="pbg-qoo" src="assets/qoo.png" alt="" onerror="this.style.display=\'none\'">'
+    + '</div>'
+    // 顶部栏（主题 / 用户 / 退出 全部靠右，中间留白）
     + '<div class="portal-topbar">'
-    +   '<button class="portal-top-btn" id="portal-theme" title="切换明暗主题" aria-label="切换明暗主题">🌓</button>'
-    +   '<span class="portal-user"><span class="portal-uname">' + U.esc(u.displayName || '') + '</span>'
-    +     '<span class="portal-urole">' + roleText + '</span></span>'
-    +   '<button class="portal-top-btn" id="portal-logout" title="退出登录" aria-label="退出登录">⏻</button>'
-    + '</div>'
-    + '<div class="portal-hero">'
-    +   '<h1 class="portal-title portal-sys-title">鹊动 FAC 功能评估与干预系统</h1>'
-    +   '<p class="portal-subtitle">请选择功能模块进入</p>'
-    + '</div>'
-    + '<div class="portal-portal-stage-wrap">'
-    +   '<div class="portal-stage">'
-    +     '<div class="portal-track">' + visible.map(cardHTML).join('') + '</div>'
+    +   '<div class="ptb-left"></div>'
+    +   '<div class="ptb-right">'
+    +     '<button class="portal-top-btn" id="portal-theme" title="切换明暗主题" aria-label="切换明暗主题">🌓</button>'
+    +     '<span class="portal-user"><span class="portal-uname">' + U.esc(u.displayName || '') + '</span> <span class="portal-urole">' + roleText + '</span></span>'
+    +     '<button class="portal-top-btn portal-logout-btn" id="portal-logout" title="退出登录" aria-label="退出登录">⏻</button>'
     +   '</div>'
     + '</div>'
-    // 底部居中：圆形切换按钮（左右）+ 中间指示点
-    + '<div class="portal-navbar">'
-    +   '<button class="portal-nav prev" id="portal-prev" aria-label="上一个">‹</button>'
-    +   '<div class="portal-dots">' + visible.map(function (c, i) { return '<button class="pdot' + (i === active ? ' on' : '') + '" data-i="' + i + '" aria-label="第' + (i + 1) + '个模块"></button>'; }).join('') + '</div>'
-    +   '<button class="portal-nav next" id="portal-next" aria-label="下一个">›</button>'
+    // 主体：左信息栏（可收纳）+ 右模块轮播
+    + '<div class="portal-body">'
+    +   '<aside class="portal-left" id="portalLeft"><div class="portal-left-inner">'
+    +     '<button class="portal-left-toggle" id="portalCollapse" title="收起信息栏" aria-label="收起信息栏">‹</button>'
+    +     '<div class="pl-welcome"><div class="pl-welcome-main">下午好，' + U.esc(u.displayName || '医生') + '</div><div class="pl-welcome-sub">2026年8月21日 周五 · 欢迎回到工作台</div><span class="pl-online">今日在岗</span></div>'
+    +     '<div class="pl-kpis">' + kpiHTML + '</div>'
+    +     '<div class="pl-section"><div class="pl-section-title">公告 / 通知</div>' + newsHTML + '</div>'
+    +     '<div class="pl-dailytip" id="dailyTip">'
+    +       '<div class="dt-qoo-wrap" id="dtQoo"><img class="dt-qoo" src="assets/qoo.png" alt="小Qoo" onerror="this.style.display=\'none\'"></div>'
+    +       '<div class="dt-card">'
+    +         '<div class="dt-head"><span class="dt-tag">💡 每日一招</span><span class="dt-date">8月21日</span><span class="dt-ai">✨ AI 生成</span></div>'
+    +         '<div class="dt-title" id="dtTitle"></div>'
+    +         '<div class="dt-text" id="dtText"></div>'
+    +       '</div>'
+    +       '<div class="dt-bubble" id="dtBubble" hidden>'
+    +         '<div class="dt-bubble-tail"></div>'
+    +         '<div class="dt-bubble-head"><span class="dt-bubble-title" id="dtBubbleTitle"></span><span class="dt-ai">✨ AI 生成</span><button class="dt-bubble-close" id="dtClose" aria-label="关闭">×</button></div>'
+    +         '<div class="dt-bubble-text" id="dtBubbleText"></div>'
+    +         '<div class="dt-bubble-detail" id="dtBubbleDetail" hidden></div>'
+    +         '<div class="dt-bubble-foot"><button class="dt-bubble-more" id="dtBubbleMore">查看详情 ›</button><button class="dt-bubble-next" id="dtBubbleNext">换一条 ›</button></div>'
+    +       '</div>'
+    +     '</div>'
+    +   '</div></aside>'
+    +   '<button class="portal-left-fab" id="portalExpand" title="展开信息栏" aria-label="展开信息栏">›</button>'
+    // 右栏：系统标题跟随卡片 + 3D 模块轮播
+    +   '<div class="portal-right">'
+    +     '<div class="portal-right-head">'
+    +       '<div class="portal-sys-title2">鹊动FAC功能评估与干预系统</div>'
+    +       '<div class="portal-modtitle">功能模块选择</div>'
+    +     '</div>'
+    +     '<div class="portal-stage-wrap">'
+    +       '<div class="portal-stage"><div class="portal-track">' + visible.map(cardHTML).join('') + '</div></div>'
+    +       '<div class="portal-navbar">'
+    +         '<button class="portal-nav prev" id="portal-prev" aria-label="上一个">‹</button>'
+    +         '<div class="portal-dots">' + visible.map(function (c, i) { return '<button class="pdot' + (i === active ? ' on' : '') + '" data-i="' + i + '" aria-label="第' + (i + 1) + '个模块"></button>'; }).join('') + '</div>'
+    +         '<button class="portal-nav next" id="portal-next" aria-label="下一个">›</button>'
+    +       '</div>'
+    +     '</div>'
+    +   '</div>'
     + '</div>'
     + '</div>';
   const cards$ = Array.prototype.slice.call(main.querySelectorAll('.portal-card.pg-card'));
@@ -1733,6 +1793,57 @@ function renderPortal() {
     prev: function () { active = (active - 1 + len) % len; update(); },
     next: function () { active = (active + 1 + len) % len; update(); }
   };
+
+  // ===== 左侧信息栏：收起 / 展开（状态持久化到 localStorage）=====
+  const collapseBtn = main.querySelector('#portalCollapse');
+  if (collapseBtn) collapseBtn.onclick = function () { const p = main.querySelector('.portal'); if (p) p.classList.add('is-collapsed'); try { localStorage.setItem('portalLeftCollapsed', '1'); } catch (e) {} };
+  const expandBtn = main.querySelector('#portalExpand');
+  if (expandBtn) expandBtn.onclick = function () { const p = main.querySelector('.portal'); if (p) p.classList.remove('is-collapsed'); try { localStorage.setItem('portalLeftCollapsed', '0'); } catch (e) {} };
+
+  // ===== 每日一招（本地素材池；落地后可替换为 AI 接口：window.AIReason / /api/ai/daily-tip）=====
+  const DAILY_TIPS = [
+    { title: '30秒坐位起立测试（30s-CST）', text: '评估下肢肌力与动态平衡的经典方法：记录 30 秒内从坐姿完成「站起—坐下」的次数，≤11 次提示跌倒风险升高。',
+      detail: [['适用', '社区老人、肌少症与跌倒风险初筛'], ['步骤', '双手抱胸坐标准椅（座高约43cm），连续站起—坐下'], ['判定', '≤11 次提示跌倒风险升高，建议结合肌少症筛查'], ['提示', '椅子无扶手、背部挺直，测试间不休息']] },
+    { title: '握力测试（Handgrip）', text: '简单有效的全身肌力筛查：男性 <28kg、女性 <18kg 可作为肌少症筛查的参考阈值。',
+      detail: [['适用', '老年肌少症门诊初筛'], ['步骤', '使用电子握力计，取优势手两次测量均值'], ['判定', '低于年龄性别阈值提示肌力下降'], ['提示', '测试时站立、手臂自然下垂，避免借力']] },
+    { title: '五次起坐测试（5×Sit-to-Stand）', text: '评估下肢肌力与动态平衡：双手交叉胸前，连续起坐 5 次，>12 秒需警惕下肢肌力下降。',
+      detail: [['适用', '社区早筛、居家自测'], ['步骤', '坐高椅，双手抱胸，听到指令后连续起坐 5 次'], ['判定', '>12 秒提示下肢肌力不足'], ['提示', '背部挺直，脚平放地面，不扶扶手']] },
+    { title: '6 分钟步行试验（6MWT）', text: '评估心肺耐力与运动耐量：6 分钟内尽量快走，距离少于 350 米提示功能受限。',
+      detail: [['适用', '心肺康复、慢病管理'], ['步骤', '在 30m 平直走廊内往返快走 6 分钟，记录距离'], ['判定', '<350m 提示功能受限，需进一步干预'], ['提示', '佩戴血氧心率监测，出现不适立即停']] },
+    { title: '脊柱侧弯 Adam 前屈试验', text: '青少年脊柱健康初筛：双脚并拢前屈，观察背部是否对称隆起，配合 AIS-12 量表评分。',
+      detail: [['适用', '校园 / 门诊青少年筛查'], ['步骤', '双膝伸直、双臂下垂前屈 90°，从后方观察背部'], ['判定', '一侧明显隆起提示椎体旋转，转专科'], ['提示', '光线充足、衣物轻薄，家长可协同观察']] }
+  ];
+  function dayIndex() { const d = new Date(); const start = new Date(d.getFullYear(), 0, 0); return Math.floor((d - start) / 864e5) % DAILY_TIPS.length; }
+  let tipIdx = dayIndex();
+  const dt = main.querySelector('#dailyTip');
+  const dtQoo = main.querySelector('#dtQoo');
+  const dtBubble = main.querySelector('#dtBubble');
+  const dtTitle = main.querySelector('#dtTitle');
+  const dtText = main.querySelector('#dtText');
+  const dtBTitle = main.querySelector('#dtBubbleTitle');
+  const dtBText = main.querySelector('#dtBubbleText');
+  const dtBDetail = main.querySelector('#dtBubbleDetail');
+  function renderTip() {
+    const t = DAILY_TIPS[tipIdx];
+    if (dtTitle) dtTitle.textContent = t.title;
+    if (dtText) dtText.textContent = t.text;
+    if (dtBTitle) dtBTitle.textContent = '💡 ' + t.title;
+    if (dtBText) dtBText.textContent = t.text;
+    if (dtBDetail) dtBDetail.innerHTML = t.detail.map(function (r) { return '<div class="dt-dl"><span class="dt-dt-k">' + r[0] + '</span><span class="dt-dt-v">' + r[1] + '</span></div>'; }).join('');
+  }
+  renderTip();
+  if (dtQoo) dtQoo.onclick = function (e) { e.stopPropagation(); if (!dt) return; const open = dt.classList.toggle('open'); if (dtBubble) dtBubble.hidden = !open; };
+  const dtClose = main.querySelector('#dtClose');
+  if (dtClose) dtClose.onclick = function (e) { e.stopPropagation(); if (dt) dt.classList.remove('open'); if (dtBubble) dtBubble.hidden = true; };
+  const dtBMore = main.querySelector('#dtBubbleMore');
+  if (dtBMore) dtBMore.onclick = function (e) { e.stopPropagation(); if (dtBDetail) { dtBDetail.hidden = !dtBDetail.hidden; dtBMore.textContent = dtBDetail.hidden ? '查看详情 ›' : '收起 ‹'; } };
+  const dtBNext = main.querySelector('#dtBubbleNext');
+  if (dtBNext) dtBNext.onclick = function (e) { e.stopPropagation(); tipIdx = (tipIdx + 1) % DAILY_TIPS.length; renderTip(); if (dtBDetail) { dtBDetail.hidden = true; const m = main.querySelector('#dtBubbleMore'); if (m) m.textContent = '查看详情 ›'; } };
+  // 点击空白处关闭气泡
+  const portalRoot = main.querySelector('.portal');
+  if (portalRoot) portalRoot.addEventListener('click', function (e) {
+    if (dtBubble && !dtBubble.hidden && dt && !dt.contains(e.target)) { dt.classList.remove('open'); dtBubble.hidden = true; }
+  });
   // 进场：先移除 preload 解锁过渡，再加 is-in 触发标题/副标题/卡片淡入
   requestAnimationFrame(function () {
     const p = main.querySelector('.portal');

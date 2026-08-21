@@ -42,7 +42,7 @@
       '[data-theme="dark"] .ac-region .rt{color:var(--txt)}',
       '[data-theme="dark"] .ac-region .rs{color:#94a3b8}',
       /* 暗色：人体图本体（atlas）— 兜底为深色 */
-      '[data-theme="dark"] .ac-atlas{background:radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--ac) 18%, transparent), color-mix(in srgb, var(--bd) 60%, #0f172a) 72%)}',
+      '[data-theme="dark"] .ac-atlas{background:radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--ac) 18%, transparent), color-mix(in srgb, var(--bd) 60%, var(--bg-card)) 72%)}',
       /* 暗色：步骤 2 人体图上的锚点小圆点 */
       '[data-theme="dark"] .ac-atlas .anchor-dot{background:rgba(255,255,255,0.85);border-color:rgba(15,21,40,0.6)}',
       '[data-theme="dark"] .ac-atlas .anchor-dot.cur{background:var(--ac);border-color:#fff;box-shadow:0 0 0 5px color-mix(in srgb, var(--ac) 35%, transparent)}',
@@ -51,7 +51,7 @@
       '[data-theme="dark"] .ac-atlas .ac-atlas-label.cur{background:var(--ac);color:#fff;border-color:color-mix(in srgb,#fff 40%, transparent)}',
       '[data-theme="dark"] .ac-stage-hd h2, [data-theme="dark"] .ac-drawer-hd h3, [data-theme="dark"] .ac-path-ttl, [data-theme="dark"] .ac-stage-hd .ic, [data-theme="dark"] .ac-radar-ttl-in, [data-theme="dark"] .ac-metric .mv, [data-theme="dark"] .ac-node .ti, [data-theme="dark"] .ac-region .rt, [data-theme="dark"] .ac-tip, [data-theme="dark"] .ac-hint, [data-theme="dark"] .ac-snap-ttl, [data-theme="dark"] .ac-snap-foot, [data-theme="dark"] .ac-stage-hd .pg, [data-theme="dark"] .ac-stage-hd .sub, [data-theme="dark"] .ac-metric .mk, [data-theme="dark"] .ac-metric .ml, [data-theme="dark"] .ac-region .rs, [data-theme="dark"] .ac-ac-tip-card, [data-theme="dark"] .ac-radar-legend, [data-theme="dark"] .ac-radar-legend .lg-item{color:inherit}',
       '[data-theme="dark"] .ac-stage-hd .ic{background:color-mix(in srgb, var(--ac) 22%, #1e293b)}',
-      '[data-theme="dark"] .ac-atlas{background:radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--ac) 18%, transparent), color-mix(in srgb, var(--bd) 60%, #0f172a) 72%)}',
+      '[data-theme="dark"] .ac-atlas{background:radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--ac) 18%, transparent), color-mix(in srgb, var(--bd) 60%, var(--bg-card)) 72%)}',
       '[data-theme="dark"] .ac-atlas-toggle{background:color-mix(in srgb, var(--bg-card) 70%, transparent)}',
       '[data-theme="dark"] .ac-atlas-toggle button.on{background:var(--bg-card);color:var(--ac)}',
       '[data-theme="dark"] .ac-radar.ac-radar-3d{background:linear-gradient(160deg, color-mix(in srgb, var(--bg-card) 85%, transparent), color-mix(in srgb, var(--bg-card) 55%, transparent));border-color:color-mix(in srgb, var(--bd) 60%, transparent)}',
@@ -338,12 +338,20 @@
       '.ac.ac-hz .ac-row2h > .ac-stage > .ac-stage-bd{overflow:auto;min-height:0}',
       '.ac.ac-hz .ac-row2h > .ac-snap{position:static;top:auto;height:100%;display:flex;flex-direction:column;min-width:0;width:100%}',
       /* 脊柱评估专用：3D 容器放大、右侧文字卡缩小；7 个 region 紧凑排列、不重叠 */
-      '.ac.ac-hz.ac--spine .ac-row2h{grid-template-columns:minmax(0,2.1fr) minmax(0,1fr);align-items:stretch}',
-      '.ac.ac-hz.ac--spine .ac-row2h > .ac-atlas{height:760px;min-height:760px;overflow:hidden}',
-      '.ac.ac-hz.ac--spine .ac-row2h > .ac-regions{display:flex;flex-direction:column;gap:3px;height:760px;min-height:760px;overflow:hidden;justify-content:flex-start}',
-      '.ac.ac-hz.ac--spine .ac-row2h > .ac-regions .ac-region{flex:0 0 auto;padding:7px 11px;display:flex;gap:5px;align-items:center;min-height:0}',
-      '.ac.ac-hz.ac--spine .ac-row2h > .ac-regions .ac-region .rt{font-size:22px;font-weight:700;line-height:1.25}',
-      '.ac.ac-hz.ac--spine .ac-row2h > .ac-regions .ac-region .rs{font-size:16px;line-height:1.25;margin-top:2px}',
+      /* 步骤2：左侧 3D 人体图 与 右侧区域列表 强制等高、且不裁切。
+         仅作用于「含人体图+区域列表(.ac-atlas-wrap)」的那一行 → 不影响步骤3/4（它们用固定高度 stage/snap）。
+         行高=内容驱动：右侧更高时整行撑高、左侧 3D 同步拉伸等高；右侧较短时左侧保持固有高度(680)不强行撑满一屏，避免「左高右低」。 */
+      '.ac.ac-hz.ac--spine .ac-row2h:has(.ac-atlas-wrap){grid-template-columns:minmax(0,2.1fr) minmax(0,1fr);align-items:stretch;height:auto;min-height:0}',
+      '.ac.ac-hz.ac--spine .ac-row2h:has(.ac-atlas-wrap) > .ac-stage{height:auto;min-height:560px;overflow:visible}',
+      '.ac.ac-hz.ac--spine .ac-row2h:has(.ac-atlas-wrap) > .ac-stage > .ac-stage-bd{display:flex;flex-direction:column;min-height:0;overflow:visible}',
+      '.ac.ac-hz.ac--spine .ac-atlas-wrap{flex:1;min-height:0;align-items:stretch;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)}',
+      '.ac.ac-hz.ac--spine .ac-atlas-wrap > .ac-atlas{height:auto;min-height:680px;overflow:hidden}',
+      '.ac.ac-hz.ac--spine .ac-atlas-wrap > .ac-regions{display:flex;flex-direction:column;gap:3px;height:auto;min-height:0;overflow:visible;justify-content:flex-start}',
+      /* canvas 由 three 以内联像素 style 渲染，用 !important 覆盖为撑满容器，左侧 3D 图随右侧高度同步拉伸 */
+      '.ac.ac-hz.ac--spine .ac-atlas-wrap > .ac-atlas canvas{width:100%!important;height:100%!important;display:block}',
+      '.ac.ac-hz.ac--spine .ac-atlas-wrap > .ac-regions .ac-region{flex:0 0 auto;padding:7px 11px;display:flex;gap:5px;align-items:center;min-height:0}',
+      '.ac.ac-hz.ac--spine .ac-atlas-wrap > .ac-regions .ac-region .rt{font-size:22px;font-weight:700;line-height:1.25}',
+      '.ac.ac-hz.ac--spine .ac-atlas-wrap > .ac-regions .ac-region .rs{font-size:16px;line-height:1.25;margin-top:2px}',
       /* 全屏填写弹窗内右侧评估项目列表：字号比主视图再小一号 */
       '.ac-step-fullscreen .ac-fs-regions{display:flex;flex-direction:column;gap:10px}',
       '.ac-step-fullscreen .ac-fs-regions .ac-region{padding:8px 12px;gap:6px;border-radius:10px}',

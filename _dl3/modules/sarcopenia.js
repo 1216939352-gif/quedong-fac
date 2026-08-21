@@ -974,7 +974,17 @@
         const distX = halfW / (tanHalf * camera.aspect); // 水平约束（已除 aspect，避免宽屏推远）
         camera.position.z = Math.max(distY, distX) * 1.06;
         camera.position.y = 0;
-      }, undefined, function (err) { console.warn('[shield3D] 老人模型加载失败，仅显示盾牌环', err); });
+      }, undefined, function (err) {
+        console.warn('[shield3D] 老人模型加载失败，仅显示盾牌环', err);
+        var em = (err && err.message) ? err.message : String(err);
+        try {
+          if (getComputedStyle(vizEl).position === 'static') vizEl.style.position = 'relative';
+          var eb = document.createElement('div');
+          eb.style.cssText = 'position:absolute;top:10px;left:10px;z-index:6;font-size:11px;padding:5px 10px;border-radius:999px;background:rgba(239,68,68,.16);color:#ef4444;border:1px solid rgba(239,68,68,.5);font-weight:600;white-space:normal;max-width:80%;line-height:1.4;';
+          eb.textContent = '老人3D模型加载失败：' + em.slice(0, 140);
+          vizEl.appendChild(eb);
+        } catch (_) {}
+      });
 
       function hexShape() {
         const shape = new THREE.Shape();
@@ -2089,6 +2099,8 @@
                 </div>
                 <button class="btn btn-ghost btn-sm" id="btn-switch-prefer" style="${isStrict || isAI ? 'display:none;' : ''}">⇄ 切换首选方案</button>
                 <button class="btn btn-ghost btn-sm btn-share-sarc-qr" data-from="step8">📲 扫码查看</button>
+                <button class="btn btn-ghost btn-sm" id="btn-sarc-checkin">📱 手机扫码打卡</button>
+                <button class="btn btn-primary btn-sm" id="btn-sarc-ai-gen">✨ AI 生成方案</button>
                 <button class="btn btn-primary btn-sm" id="btn-print-plan">打印 / 导出干预方案</button></div></div>
               <div class="card-body">
                 <div id="sarc-view-std" style="${view === 'std' ? '' : 'display:none;'}">
@@ -2127,9 +2139,17 @@
               </div></div>
 
             <div class="card mt-3"><div class="card-header">
-              <h3 class="card-title"><span class="card-title-icon">🍽️</span>步骤 8 · 方案配套（饮食营养 / 建议周节律）</h3></div>
+              <h3 class="card-title"><span class="card-title-icon">🍽️</span>步骤 8-2 · 营养方案（个体化膳食建议）</h3></div>
               <div class="card-body">
-                ${plan.diet && plan.diet.length ? `<div class="sarc-kv" style="margin:0 0 12px;"><span>饮食营养</span><table class="sarc-diet-tbl"><tbody>${plan.diet.map(x => `<tr><td><b>${U.esc(x[0])}</b></td><td>${U.esc(x[1])}</td></tr>`).join('')}</tbody></table></div>` : ''}
+                ${plan.diet && plan.diet.length ? `<div class="sarc-kv" style="margin:0 0 4px;"><span>饮食营养要点</span><table class="sarc-diet-tbl"><tbody>${plan.diet.map(x => `<tr><td><b>${U.esc(x[0])}</b></td><td>${U.esc(x[1])}</td></tr>`).join('')}</tbody></table></div>` : '<p style="color:var(--text-muted);font-size:13px;">暂无营养方案数据，请先完成步骤 4-3 营养评估后重试。</p>'}
+                <div class="alert alert-info" style="margin-top:12px;">
+                  <div><strong>提示</strong><p style="margin:6px 0 0;font-size:13px;">营养方案依据 MNA-SF 营养评估与生活方式问卷自动生成，可与「标准版 / 严谨版 / AI 方案推荐」并列对照；患者可通过上方「📱 手机扫码打卡」每日执行。</p></div>
+                </div>
+              </div></div>
+
+            <div class="card mt-3"><div class="card-header">
+              <h3 class="card-title"><span class="card-title-icon">🗓️</span>步骤 8-3 · 执行配套（建议周节律 / 复查）</h3></div>
+              <div class="card-body">
                 <div class="sarc-kv" style="margin:0 0 12px;"><span>建议周训练节律</span><p>抗阻训练 2–3 次/周（徒手或鹊动设备，隔日进行）；有氧 3–5 次/周（快走 / 太极 / 慢骑，微微出汗）；每日穿插平衡与柔韧练习；保证至少 1 天完全休息。具体可据体力在手机端打卡页调整。</p></div>
                 <div class="alert alert-info" style="margin-top:4px;">
                   <div><strong>提示</strong><p style="margin:6px 0 0;font-size:13px;">跌倒风险评估已融入本流程的步骤 9，请继续「下一步 →」完成。</p></div>
@@ -2616,6 +2636,25 @@
             else U.toast('分享组件未就绪', 'error');
           };
         });
+        const ckBtn = U.qs('#btn-sarc-checkin', bodyEl);
+        if (ckBtn) ckBtn.onclick = () => {
+          let sarcoRec = null;
+          if (window.SarcShare && typeof SarcShare.snapshot === 'function') sarcoRec = SarcShare.snapshot();
+          if (window.Share && typeof Share.openPlanQRModal === 'function') Share.openPlanQRModal({ scheme: 'sarcopenia', sarcoRec: sarcoRec });
+          else U.toast('分享组件未就绪', 'error');
+        };
+        const aiGen = U.qs('#btn-sarc-ai-gen', bodyEl);
+        if (aiGen) aiGen.onclick = () => {
+          S.planView = 'ai'; saveDraft();
+          const vt = U.qs('#sarc-view-toggle', bodyEl);
+          if (vt) U.qsa('button[data-view]', vt).forEach(x => x.classList.toggle('active', x.getAttribute('data-view') === 'ai'));
+          const stdEl = U.qs('#sarc-view-std', bodyEl), strictEl = U.qs('#sarc-view-strict', bodyEl), aiEl = U.qs('#sarc-view-ai', bodyEl);
+          if (stdEl) stdEl.style.display = 'none';
+          if (strictEl) strictEl.style.display = 'none';
+          if (aiEl) aiEl.style.display = '';
+          const swb = U.qs('#btn-switch-prefer', bodyEl); if (swb) swb.style.display = 'none';
+          enrichAI();
+        };
         const eb = U.qs('#btn-edit-exerc', bodyEl);
         if (eb) eb.onclick = () => {
           const R = compute();
@@ -2818,6 +2857,10 @@
       if (S.exercisePlanOverride) { R.plan.home = R.plan.home || {}; R.plan.home.exercisePlan = S.exercisePlanOverride; }
       window.__sarcLastCompute = R; // 供工作台「严谨版方案」入口复用
       window.__sarcLastPatient = base;
+      /* 兜底：确保营养方案始终有内容（避免步骤 8 饮食营养区块因数据缺失而不显示） */
+      if (!R.plan.diet || !R.plan.diet.length) {
+        R.plan.diet = [['营养维持', '保证每日优质蛋白（蛋 / 奶 / 鱼 / 禽 / 豆制品）与维生素 D 摄入，规律三餐、控糖控油；必要时至营养科会诊制定个体化膳食方案。']];
+      }
       return R;
     }
     /* 严谨版（SarcEngine2）内联渲染：任何异常都降级为提示，不拖垮步骤 8 整页 */

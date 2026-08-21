@@ -184,8 +184,19 @@
           currentModel = model;
           banner.style.display = 'none';
         }, undefined, function (err) {
+          var msg = (err && err.message) ? err.message : String(err);
           console.warn('[spine3D] 模型加载失败', url, err);
-          if (!isPlaceholder) loadModel(placeholder, true); // 回退占位
+          if (!isPlaceholder) {
+            banner.textContent = '真实模型加载失败，回退占位…';
+            loadModel(placeholder, true); // 回退占位
+          } else {
+            // 占位也失败：把真实错误显示在横幅上，便于无控制台环境排查
+            banner.style.display = '';
+            banner.style.background = 'rgba(239,68,68,.16)';
+            banner.style.color = '#ef4444';
+            banner.style.borderColor = 'rgba(239,68,68,.5)';
+            banner.textContent = '3D模型加载失败：' + msg.slice(0, 140);
+          }
         });
       }
       loadModel(modelByGender[gender] || placeholder, !(modelByGender[gender]));

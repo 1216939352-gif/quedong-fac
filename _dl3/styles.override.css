@@ -324,7 +324,7 @@
 [data-theme="light"] .sarc-summary-meta{ color:#5b6491; }
 [data-theme="light"] .sarc-summary-desc{ color:#3b4366; }
 [data-theme="light"] .sarc-panel{ background:rgba(255,255,255,.7); border:1px solid rgba(99,102,241,.18); box-shadow:0 8px 28px rgba(31,37,64,.08); }
-[data-theme="light"] .sarc-viz.sarc-viz-3d{ background:radial-gradient(circle at 50% 30%, rgba(120,130,255,.10), transparent 60%), rgba(245,246,255,.7); border:1px solid rgba(99,102,241,.20); box-shadow:0 10px 36px rgba(31,37,64,.08), inset 0 0 60px rgba(99,102,241,.06); }
+[data-theme="light"] .sarc-viz.sarc-viz-3d{ background:radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--ac) 12%, transparent), transparent 60%), var(--bg-card); border:1px solid var(--border-color, rgba(99,102,241,.20)); box-shadow:0 10px 36px rgba(31,37,64,.08), inset 0 0 60px color-mix(in srgb, var(--ac) 8%, transparent); }
 [data-theme="light"] .sarc-viz.sarc-viz-3d .shield3d-tip{ color:#5b6491; background:rgba(255,255,255,.85); border:1px solid rgba(99,102,241,.20); }
 [data-theme="light"] .sarc-viz.sarc-viz-3d .shield3d-loading{ color:#5b6491; }
 [data-theme="light"] .sarc-assess.d-holo .sarc-navbar{ background:rgba(255,255,255,.7); border:1px solid rgba(99,102,241,.18); box-shadow:0 6px 22px rgba(31,37,64,.06); }
@@ -349,8 +349,8 @@
 /* 两栏：左大比例 3D 舞台 / 右路径面板（方案要求左大比例） */
 .sarc-holo-grid{ display:grid; grid-template-columns:minmax(0,1.7fr) minmax(340px,440px); gap:18px; align-items:stretch; margin-top:14px; }
 .sarc-viz.sarc-viz-3d{ display:block; position:relative; min-height:600px; margin:0; max-width:none;
-  background:radial-gradient(circle at 50% 30%, rgba(120,130,255,.16), transparent 60%), rgba(8,12,32,.5);
-  border:1px solid rgba(150,160,255,.22); border-radius:18px; box-shadow:0 10px 40px rgba(0,0,0,.3), inset 0 0 60px rgba(60,70,160,.12); overflow:hidden; }
+  background:radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--ac) 16%, transparent), transparent 60%), var(--bg-card);
+  border:1px solid var(--border-color, rgba(150,160,255,.22)); border-radius:18px; box-shadow:0 10px 40px rgba(0,0,0,.12), inset 0 0 60px color-mix(in srgb, var(--ac) 10%, transparent); overflow:hidden; }
 .sarc-viz.sarc-viz-3d .shield3d-canvas{ display:block; width:100%; height:600px; cursor:grab; }
 .sarc-viz.sarc-viz-3d .shield3d-canvas:active{ cursor:grabbing; }
 .sarc-viz.sarc-viz-3d .shield3d-tip{ position:absolute; bottom:12px; left:50%; transform:translateX(-50%);
@@ -3291,5 +3291,152 @@ html[data-theme="dark"] .portal-card.pg-card { background:linear-gradient(145deg
 @media (max-width: 1100px) {
   .rc-muscle-grid { grid-template-columns: 1fr; }
 }
+
+/* =====================================================================
+   Portal v3 改版（分栏：左信息栏可收纳 + 右 3D 模块轮播）
+   说明：仅新增以下规则，未改动上方任何既有 Portal 规则（避免与 8/18 修改冲突）
+   ===================================================================== */
+.portal.portal-v3 { flex-direction:column; align-items:stretch; justify-content:flex-start; padding:0; gap:0; }
+.portal.portal-v3 .portal-body { position:relative; z-index:1; flex:1 1 auto; display:flex; align-items:stretch; min-height:0; padding-top:64px; }
+
+/* 背景装饰（克制：FAC 水印 + 小Qoo + 柔和光晕） */
+.portal-v3 .portal-bg { position:absolute; inset:0; z-index:0; pointer-events:none; overflow:hidden; }
+.portal-v3 .pbg-fac { position:absolute; font-weight:800; font-size:200px; letter-spacing:10px; color:var(--primary); opacity:.055; user-select:none; }
+.portal-v3 .pbg-fac-a { top:8%; left:-2%; transform:rotate(-8deg); }
+.portal-v3 .pbg-fac-b { bottom:6%; right:-2%; transform:rotate(8deg); }
+.portal-v3 .pbg-glow { position:absolute; border-radius:50%; filter:blur(60px); opacity:.5; }
+.portal-v3 .pbg-glow-1 { width:420px; height:420px; top:-120px; right:-80px; background:radial-gradient(circle, rgba(242,101,34,.18), transparent 70%); }
+.portal-v3 .pbg-glow-2 { width:380px; height:380px; bottom:-120px; left:-60px; background:radial-gradient(circle, rgba(59,130,246,.16), transparent 70%); }
+.portal-v3 .pbg-qoo { position:absolute; left:2%; bottom:9%; width:300px; opacity:.12; transform:rotate(-8deg); }
+
+/* 顶部栏：右对齐组（主题 / 用户 / 退出） */
+.portal-v3 .portal-topbar { justify-content:space-between; }
+.portal-v3 .ptb-left { flex:1 1 auto; }
+.portal-v3 .ptb-right { display:flex; align-items:center; gap:14px; }
+.portal-v3 .portal-urole { color:var(--text-secondary); font-size:12px; }
+.portal-v3 .portal-logout-btn { width:40px; height:40px; padding:0; font-size:18px; background:var(--bg-card,rgba(30,41,59,.7)); border:1px solid var(--glass-border,rgba(255,255,255,.16)); }
+.portal-v3 .portal-logout-btn:hover { background:rgba(220,38,38,.12); border-color:rgba(220,38,38,.32); color:#dc2626; transform:translateY(-1px); }
+
+/* 左侧信息栏（可收纳） */
+.portal-v3 .portal-left { flex:0 0 360px; width:360px; padding:16px 16px 16px 18px; overflow-y:auto; }
+.portal-v3 .portal-left-inner { position:relative; display:flex; flex-direction:column; gap:12px; padding-top:46px; }
+.portal-v3 .portal-left-toggle { position:absolute; top:6px; left:50%; transform:translateX(-50%); z-index:3; width:34px; height:34px; border-radius:50%; background:var(--bg-card,#fff); border:1px solid var(--border-color,rgba(15,23,42,.12)); color:var(--text-secondary); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:18px; box-shadow:0 6px 16px rgba(15,23,42,.10); }
+.portal-v3 .portal-left-toggle:hover { color:var(--primary); border-color:rgba(242,101,34,.4); }
+.portal-v3.is-collapsed .portal-left { display:none; }
+.portal-v3 .portal-left-fab { display:none; }
+.portal-v3.is-collapsed .portal-left-fab { display:flex; position:fixed; top:78px; left:14px; z-index:40; width:40px; height:40px; border-radius:50%; background:var(--bg-card,#fff); border:1px solid var(--border-color,rgba(15,23,42,.12)); color:var(--primary); align-items:center; justify-content:center; cursor:pointer; font-size:20px; box-shadow:0 8px 22px rgba(15,23,42,.12); }
+
+/* 左栏内容卡片 */
+.portal-v3 .pl-welcome { position:relative; background:var(--bg-card,#fff); border:1px solid var(--border-color,rgba(15,23,42,.08)); border-radius:14px; padding:14px 16px; box-shadow:0 4px 14px rgba(15,23,42,.05); }
+.portal-v3 .pl-welcome-main { font-size:19px; font-weight:700; color:var(--text-primary); }
+.portal-v3 .pl-welcome-sub { font-size:12.5px; color:var(--text-secondary); margin-top:2px; }
+.portal-v3 .pl-online { position:absolute; top:14px; right:14px; font-size:11px; color:#fff; background:var(--primary); padding:3px 10px; border-radius:12px; font-weight:600; }
+.portal-v3 .pl-kpis { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.portal-v3 .pl-kpi { position:relative; background:var(--bg-card,#fff); border:1px solid var(--border-color,rgba(15,23,42,.08)); border-radius:12px; padding:10px 12px 10px 14px; overflow:hidden; box-shadow:0 3px 10px rgba(15,23,42,.04); }
+.portal-v3 .pl-kpi-bar { position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--kc, var(--primary)); }
+.portal-v3 .pl-kpi-label { font-size:12px; color:var(--text-secondary); }
+.portal-v3 .pl-kpi-val { font-size:21px; font-weight:800; color:var(--text-primary); margin-top:2px; }
+.portal-v3 .pl-kpi-trend { font-size:11px; font-weight:600; color:var(--kc, var(--primary)); margin-left:6px; }
+.portal-v3 .pl-section { background:var(--bg-card,#fff); border:1px solid var(--border-color,rgba(15,23,42,.08)); border-radius:14px; padding:12px 14px; box-shadow:0 3px 10px rgba(15,23,42,.04); }
+.portal-v3 .pl-section-title { font-size:15px; font-weight:700; color:var(--text-primary); margin-bottom:8px; }
+.portal-v3 .pl-news { display:flex; gap:8px; align-items:flex-start; padding:5px 0; }
+.portal-v3 .pl-dot { flex:0 0 6px; width:6px; height:6px; border-radius:50%; margin-top:6px; }
+.portal-v3 .pl-news-t { font-size:12.5px; color:var(--text-secondary); line-height:1.5; }
+
+/* 每日一招（小Qoo 趴在卡片后：默认露头，点击浮出露半身） */
+.portal-v3 .pl-dailytip { position:relative; margin-top:2px; }
+.portal-v3 .pl-dailytip .dt-qoo-wrap { position:absolute; top:-40px; right:8px; width:120px; z-index:0; cursor:pointer; transition:transform .45s cubic-bezier(.34,1.56,.64,1); }
+.portal-v3 .pl-dailytip.open .dt-qoo-wrap { transform:translateY(-46px); }
+.portal-v3 .pl-dailytip .dt-qoo { width:100%; height:auto; display:block; transform-origin:50% 100%; filter:drop-shadow(0 8px 16px rgba(242,101,34,.22)); animation:dt-float 3s ease-in-out infinite; }
+@keyframes dt-float { 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-6px); } }
+.portal-v3 .pl-dailytip .dt-card { position:relative; z-index:1; background:linear-gradient(180deg,#fff6ee,#ffe9da); border:1px solid rgba(242,101,34,.18); border-radius:16px; padding:12px 14px 12px; box-shadow:0 10px 26px rgba(242,101,34,.10); overflow:hidden; }
+.portal-v3 .pl-dailytip .dt-head { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.portal-v3 .pl-dailytip .dt-tag { font-size:13px; font-weight:700; color:var(--primary); }
+.portal-v3 .pl-dailytip .dt-date { font-size:12px; color:var(--text-secondary); }
+.portal-v3 .pl-dailytip .dt-ai { margin-left:auto; font-size:11px; color:var(--primary); background:#fff; border:1px solid rgba(242,101,34,.3); padding:1px 8px; border-radius:10px; }
+.portal-v3 .pl-dailytip .dt-title { font-size:14px; font-weight:800; color:var(--text-primary); line-height:1.35; margin-bottom:5px; }
+.portal-v3 .pl-dailytip .dt-text { font-size:12px; color:var(--text-secondary); line-height:1.55; }
+.portal-v3 .pl-dailytip .dt-bubble { position:absolute; top:-18px; left:8px; right:8px; z-index:5; background:#fff; border:1px solid var(--border-color,#eee); border-radius:14px; padding:12px 14px; box-shadow:0 16px 40px rgba(15,23,42,.18); }
+.portal-v3 .pl-dailytip .dt-bubble-tail { position:absolute; right:42px; bottom:-10px; width:0; height:0; border-left:10px solid transparent; border-right:10px solid transparent; border-top:10px solid #fff; filter:drop-shadow(0 1px 0 var(--border-color,#eee)); }
+.portal-v3 .pl-dailytip .dt-bubble-head { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.portal-v3 .pl-dailytip .dt-bubble-title { font-size:14px; font-weight:800; color:var(--text-primary); flex:1; }
+.portal-v3 .pl-dailytip .dt-bubble-close { border:none; background:transparent; font-size:18px; line-height:1; color:var(--text-secondary); cursor:pointer; }
+.portal-v3 .pl-dailytip .dt-bubble-text { font-size:12.5px; color:var(--text-secondary); line-height:1.55; }
+.portal-v3 .pl-dailytip .dt-bubble-detail { margin-top:8px; border-top:1px dashed var(--border-color,#eee); padding-top:8px; display:flex; flex-direction:column; gap:5px; }
+.portal-v3 .pl-dailytip .dt-dl { display:flex; gap:8px; font-size:12px; }
+.portal-v3 .pl-dailytip .dt-dt-k { flex:0 0 52px; color:var(--primary); font-weight:700; }
+.portal-v3 .pl-dailytip .dt-dt-v { flex:1; color:var(--text-secondary); }
+.portal-v3 .pl-dailytip .dt-bubble-foot { display:flex; gap:14px; margin-top:10px; }
+.portal-v3 .pl-dailytip .dt-bubble-more, .portal-v3 .pl-dailytip .dt-bubble-next { border:none; background:transparent; color:var(--primary); font-size:12.5px; font-weight:600; cursor:pointer; padding:0; }
+
+/* 暗色主题下的每日一招适配 */
+[data-theme="dark"] .portal-v3 .pl-dailytip .dt-card { background:linear-gradient(180deg,#3a2a20,#2a1f17); border-color:rgba(242,101,34,.3); }
+[data-theme="dark"] .portal-v3 .pl-dailytip .dt-title, [data-theme="dark"] .portal-v3 .pl-dailytip .dt-text { color:#f1e7df; }
+[data-theme="dark"] .portal-v3 .pl-dailytip .dt-ai { background:rgba(255,255,255,.06); }
+[data-theme="dark"] .portal-v3 .pl-dailytip .dt-bubble { background:#1e293b; border-color:#334155; }
+[data-theme="dark"] .portal-v3 .pl-dailytip .dt-bubble-title, [data-theme="dark"] .portal-v3 .pl-dailytip .dt-bubble-text { color:#e2e8f0; }
+
+/* 右栏：水平居中——收起时整页居中、展开时落在右栏(页面右侧)；系统标题与舞台同宽、居中压在最前卡片正上方并随卡片重排跟随 */
+/* 关键：v3 卡片位移必须带 translate(-50%,-50%)，抵消 .pg-card 的 left:50%/top:50%，让卡片中心对齐舞台中心（否则整体偏右下） */
+.portal-v3 .portal-right { flex:1 1 auto; display:flex; flex-direction:column; align-items:center; justify-content:center; min-width:0; padding:16px 28px 18px; gap:0; }
+.portal-v3 .portal-right-head { width:100%; max-width:1100px; margin:0 0 clamp(20px,3.4vh,40px); text-align:center; }
+.portal-v3 .portal-sys-title2 { font-size:clamp(26px,3.2vw,40px); font-weight:800; color:var(--primary); letter-spacing:.5px; }
+.portal-v3 .portal-modtitle { font-size:15px; font-weight:600; color:var(--text-secondary); margin-top:4px; }
+.portal-v3 .portal-stage-wrap { width:100%; max-width:1100px; display:flex; flex-direction:column; align-items:center; }
+.portal-v3 .portal-navbar { display:flex; align-items:center; gap:16px; margin-top:18px; }
+
+/* Portal v3 功能入口卡片：适中尺寸，居中于右栏，切换按钮与卡片保持间距 */
+.portal-v3 .portal-stage { height:clamp(380px,54vh,545px); max-width:1100px; perspective:1300px; }
+.portal-v3 .portal-card.pg-card { width:clamp(264px,24vw,360px); border-radius:28px; }
+.portal-v3 .portal-card.pg-card .pg-top { top:22px; left:22px; right:22px; gap:8px; }
+.portal-v3 .portal-card.pg-card .pg-name { font-size:clamp(20px,2vw,28px); }
+.portal-v3 .portal-card.pg-card .pg-desc { font-size:13px; line-height:1.55; }
+.portal-v3 .portal-card.pg-card .pg-icon { font-size:66px; left:18px; bottom:16px; }
+.portal-v3 .portal-card.pg-card .pc-qoo { width:120px; height:120px; right:-22px; bottom:-22px; }
+.portal-v3 .portal-card.pg-card[data-off="0"] { transform:translate(-50%,-50%) translateX(0) translateZ(130px) scale(1.05); }
+.portal-v3 .portal-card.pg-card[data-off="-1"] { transform:translate(-50%,-50%) translateX(-300px) translateZ(-85px) rotateY(28deg) scale(.84); }
+.portal-v3 .portal-card.pg-card[data-off="1"]  { transform:translate(-50%,-50%) translateX(300px) translateZ(-85px) rotateY(-28deg) scale(.84); }
+.portal-v3 .portal-card.pg-card[data-off="-2"] { transform:translate(-50%,-50%) translateX(-560px) translateZ(-210px) rotateY(44deg) scale(.66); }
+.portal-v3 .portal-card.pg-card[data-off="2"]  { transform:translate(-50%,-50%) translateX(560px) translateZ(-210px) rotateY(-44deg) scale(.66); }
+.portal-v3 .portal-card.pg-card[data-off="-3"],.portal-v3 .portal-card.pg-card[data-off="3"],.portal-v3 .portal-card.pg-card[data-off="-4"],.portal-v3 .portal-card.pg-card[data-off="4"] { opacity:0; pointer-events:none; transform:translate(-50%,-50%) translateX(0) translateZ(-260px) scale(.55); }
+/* 双保险：极端卡片数时 data-off 可能到 ±5/±6，统一隐藏，杜绝无匹配规则导致的错位 */
+.portal-v3 .portal-card.pg-card[data-off="-5"],.portal-v3 .portal-card.pg-card[data-off="5"],.portal-v3 .portal-card.pg-card[data-off="-6"],.portal-v3 .portal-card.pg-card[data-off="6"] { opacity:0; pointer-events:none; transform:translate(-50%,-50%) translateX(0) translateZ(-320px) scale(.5); }
+
+/* 响应式：中等宽度收敛卡片偏移，避免裁切 */
+@media (max-width: 1280px) {
+  .portal-v3 .portal-card.pg-card[data-off="-1"] { transform:translate(-50%,-50%) translateX(-250px) translateZ(-70px) rotateY(28deg) scale(.84); }
+  .portal-v3 .portal-card.pg-card[data-off="1"]  { transform:translate(-50%,-50%) translateX(250px) translateZ(-70px) rotateY(-28deg) scale(.84); }
+  .portal-v3 .portal-card.pg-card[data-off="-2"] { transform:translate(-50%,-50%) translateX(-470px) translateZ(-200px) rotateY(44deg) scale(.66); opacity:.16; }
+  .portal-v3 .portal-card.pg-card[data-off="2"]  { transform:translate(-50%,-50%) translateX(470px) translateZ(-200px) rotateY(-44deg) scale(.66); opacity:.16; }
+}
+@media (max-width: 1100px) {
+  .portal-v3 .portal-card.pg-card { width:clamp(200px,22vw,250px); }
+  .portal-v3 .portal-card.pg-card[data-off="-1"] { transform:translate(-50%,-50%) translateX(-178px) translateZ(-55px) rotateY(26deg) scale(.82); }
+  .portal-v3 .portal-card.pg-card[data-off="1"]  { transform:translate(-50%,-50%) translateX(178px) translateZ(-55px) rotateY(-26deg) scale(.82); }
+  .portal-v3 .portal-card.pg-card[data-off="-2"],.portal-v3 .portal-card.pg-card[data-off="2"] { opacity:0; pointer-events:none; }
+}
+
+/* 响应式：窄屏改为上下堆叠 */
+@media (max-width: 980px) {
+  .portal-v3 .portal-body { flex-direction:column; }
+  .portal-v3 .portal-left { flex:0 0 auto; width:100%; }
+  .portal-v3 .portal-left-fab { top:70px; }
+  .portal-v3 .portal-right { padding-top:12px; }
+  .portal-v3 .pbg-fac { font-size:130px; }
+  .portal-v3 .pbg-qoo { width:200px; opacity:.12; left:1%; bottom:8%; }
+}
+
+/* —— 肌少症智能方案 · 富化营养卡（仿体重管理报告） —— */
+.sar-nutri { font-size: 13px; line-height: 1.7; }
+.sar-nutri-principle {
+  background: linear-gradient(90deg, rgba(13,148,136,.10), rgba(13,148,136,.02));
+  border: 1px solid rgba(13,148,136,.25);
+  color: #0f766e;
+  border-radius: 10px; padding: 10px 14px; font-weight: 600; margin-bottom: 14px;
+}
+.sar-nutri .report-sub { margin: 18px 0 10px; color: var(--primary); font-size: 14.5px; border-left: 3px solid var(--primary); padding-left: 10px; }
+.sar-nutri-points { margin: 0; padding-left: 18px; }
+.sar-nutri-points li { margin: 6px 0; }
+.report-meal-ico { font-size: 18px; margin-right: 6px; line-height: 1; }
 
 

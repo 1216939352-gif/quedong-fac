@@ -536,6 +536,106 @@
     }
 
     const R = rec.result, pl = R.plan;
+    /* 兜底：确保营养方案始终有内容（避免「智能方案」页营养区块因归档记录缺失 diet 而不显示） */
+    const diet = (pl && pl.diet && pl.diet.length) ? pl.diet : [['营养维持', '保证每日优质蛋白（蛋 / 奶 / 鱼 / 禽 / 豆制品）与维生素 D 摄入，规律三餐、控糖控油；必要时至营养科会诊制定个体化膳食方案。']];
+
+    /* —— 富化营养方案：仿体重管理报告（KPI + 供能配比条 + 三餐详解 + 个体化要点）——
+       数据来源：归档记录体重 rec.weight / 评估 diet（MNA-SF 驱动）+ 老年肌少症高蛋白原则 */
+    const sarW = U.num(rec.weight);
+    const sarAtRisk = diet.some(function (x) { return /营养风险/.test(x[0]); });
+    const sarTargetKcal = sarW ? Math.round(sarW * 28) : null;
+    const sarProteinPerKg = sarAtRisk ? 1.5 : 1.2;
+    const sarProteinG = sarW ? Math.round(sarW * sarProteinPerKg) : null;
+    const sarProteinPct = (sarTargetKcal && sarProteinG) ? Math.round(sarProteinG * 4 / sarTargetKcal * 100) : null;
+    const sarFatPct = 27;
+    const sarFatG = sarTargetKcal ? Math.round(sarTargetKcal * sarFatPct / 100 / 9) : null;
+    const sarCarbG = (sarTargetKcal && sarProteinG && sarFatG) ? Math.round((sarTargetKcal - sarProteinG * 4 - sarFatG * 9) / 4) : null;
+    const sarCarbPct = (sarProteinPct != null) ? (100 - sarProteinPct - sarFatPct) : null;
+    const sarWater = sarW ? Math.round(sarW * 30) : '1500–2000';
+
+    function sarKpi(value, label, icon) {
+      return '<div class="report-kpi"><div class="report-kpi-emoji">' + (icon || '') + '</div>'
+        + '<div class="report-kpi-text"><b>' + value + '</b><span>' + U.esc(label) + '</span></div></div>';
+    }
+    function sarMealCard(m) {
+      const foods = (m.foods && m.foods.length) ? '<ul class="report-meal-foods">' + m.foods.map(function (f) { return '<li>' + U.esc(f) + '</li>'; }).join('') + '</ul>' : '';
+      return '<div class="report-meal">'
+        + '<div class="report-meal-head"><span class="report-meal-ico">' + (m.icon || '') + '</span><strong>' + U.esc(m.name) + '</strong><span class="badge badge-primary">' + m.kcal + ' kcal</span></div>'
+        + '<div class="report-meal-meta">' + U.esc(m.time || '') + '</div>'
+        + '<div class="report-meal-macros"><span>蛋白 ' + m.protein + 'g</span><span>脂肪 ' + m.fat + 'g</span><span>碳水 ' + m.carb + 'g</span></div>'
+        + foods
+        + (m.tip ? '<div class="report-meal-tip">' + U.esc(m.tip) + '</div>' : '')
+        + '</div>';
+    }
+    function sarMeal(name, time, share, foods, tip, icon) {
+      return {
+        name: name, time: time, icon: icon, kcal: sarTargetKcal ? Math.round(sarTargetKcal * share) : '—',
+        protein: sarProteinG ? Math.round(sarProteinG * share) : '—',
+        fat: sarFatG ? Math.round(sarFatG * share) : '—',
+        carb: sarCarbG ? Math.round(sarCarbG * share) : '—',
+        foods: foods, tip: tip
+      };
+    }
+    const sarMeals = [
+      sarMeal('早餐', '07:00–08:00', 0.30, [
+        '水煮蛋 / 蒸蛋羹 1 个（≈7 g 蛋白）',
+        '无糖酸奶 / 牛奶 250 ml（≈8 g 蛋白 + 钙）',
+        '燕麦 / 杂粮粥 1 碗 + 全麦面包 1 片',
+        '时令蔬果（番茄 / 菠菜 / 苹果等）'
+      ], '优质蛋白开篇，唤醒肌肉蛋白质合成；搭配全谷物提供持续能量。', '🌅'),
+      sarMeal('午餐', '11:30–12:30', 0.40, [
+        '杂粮饭 1 碗（糙米 / 燕麦米）',
+        '清蒸鱼 / 去皮禽肉 / 瘦肉 100–150 g（≈20–25 g 蛋白）',
+        '北豆腐 / 豆制品 1 份 + 深色蔬菜 200 g',
+        '少量植物油（橄榄油）快炒'
+      ], '全天蛋白主力餐，动植物双来源蛋白 + 足量蔬菜，保证肌少症增肌原料。', '🍱'),
+      sarMeal('晚餐', '18:00–19:00', 0.30, [
+        '易消化优质蛋白：豆腐 / 鱼肉 / 蛋 1 份',
+        '西兰花 / 冬瓜 / 菌菇等蔬菜',
+        '主食半碗，清淡少油少盐'
+      ], '清淡易消化，减轻胃肠负担，避免夜间能量过剩。', '🌙')
+    ];
+    const sarSnack = sarMeal('加餐（可选）', '10:00 / 15:00', 0.10, [
+      '无糖酸奶 / 坚果 1 小把 / 时令水果',
+      sarAtRisk ? '营养不良风险者：口服营养补充（ONS）400 kcal 高蛋白配方' : '少量多次，避免单次过饱'
+    ], sarAtRisk ? '高危人群建议额外 ONS 补充，提升每日总蛋白与能量摄入。' : '两餐之间少量加餐，稳定血糖、维持蛋白合成。', '🍎');
+
+    const nutritionHtml = (function () {
+      const macroBars = (sarProteinPct != null) ? U.barCompare([
+        { label: '蛋白质 ' + sarProteinG + 'g（' + sarProteinPerKg + ' g/kg·体重）', value: sarProteinPct, display: sarProteinPct + '%', color: '#0D9488' },
+        { label: '脂肪 ' + sarFatG + 'g（总热量约 27%）', value: sarFatPct, display: sarFatPct + '%', color: '#f59e0b' },
+        { label: '碳水化合物 ' + sarCarbG + 'g（填充剩余）', value: sarCarbPct, display: sarCarbPct + '%', color: '#22c55e' }
+      ]) : '';
+      const sarPie = (sarProteinPct != null) ? macroPie({
+        proteinPct: sarProteinPct, fatPct: sarFatPct, carbPct: sarCarbPct,
+        proteinG: sarProteinG, fatG: sarFatG, carbG: sarCarbG,
+        proteinKcal: sarProteinG * 4, fatKcal: sarFatG * 9, carbKcal: sarCarbG * 4
+      }) : '';
+      return '<div class="sar-nutri">'
+        + '<div class="sar-nutri-principle">🥗 核心原则：高蛋白（' + sarProteinPerKg + ' g/kg·体重）· 优质钙与维生素 D · 规律三餐、少量多餐</div>'
+        + '<div class="report-kpi-row">'
+        + sarKpi(sarTargetKcal != null ? sarTargetKcal + ' kcal' : '—', '每日目标能量', '🍚')
+        + sarKpi(sarProteinG != null ? sarProteinG + ' g' : (sarProteinPerKg + ' g/kg'), '蛋白质摄入', '🥚')
+        + sarKpi(sarWater + ' ml', '每日饮水', '💧')
+        + sarKpi('800–1000 IU', '维生素 D', '☀️')
+        + '</div>'
+        + '<h4 class="report-sub">三大营养素供能配比</h4>'
+        + macroBars
+        + sarPie
+        + '<table class="data-table mt-2"><thead><tr><th>营养素</th><th>克数 (g)</th><th>占比 / 建议</th></tr></thead><tbody>'
+        + '<tr><td>蛋白质</td><td><b>' + (sarProteinG != null ? sarProteinG : '—') + '</b></td><td>' + (sarProteinPct != null ? sarProteinPct + '%' : '—') + '（' + sarProteinPerKg + ' g/kg·体重）</td></tr>'
+        + '<tr><td>脂肪</td><td><b>' + (sarFatG != null ? sarFatG : '—') + '</b></td><td>' + sarFatPct + '%</td></tr>'
+        + '<tr><td>碳水化合物</td><td><b>' + (sarCarbG != null ? sarCarbG : '—') + '</b></td><td>' + (sarCarbPct != null ? sarCarbPct + '%' : '—') + '</td></tr>'
+        + '<tr><td>膳食纤维</td><td colspan="2">25–30 g/日</td></tr>'
+        + '<tr><td>食盐 / 添加糖 / 饮水</td><td colspan="2">&lt;5 g / &lt;25 g / ' + sarWater + ' ml</td></tr>'
+        + '</tbody></table>'
+        + '<h4 class="report-sub">三餐饮食详解（能量分配 3:4:3 + 加餐）</h4>'
+        + '<div class="report-meals">' + sarMeals.map(sarMealCard).join('') + sarMealCard(sarSnack) + '</div>'
+        + '<h4 class="report-sub">个体化营养要点（依据评估自动生成）</h4>'
+        + '<ul class="sar-nutri-points">' + diet.map(function (x) { return '<li><b>' + U.esc(x[0]) + '</b>：' + U.esc(x[1]) + '</li>'; }).join('') + '</ul>'
+        + '<div class="alert alert-info" style="margin-top:12px;"><div><strong>执行提示</strong><p style="margin:6px 0 0;font-size:13px;">本营养方案依据肌少症综合评估（MNA-SF / 生活方式问卷）自动生成，建议结合临床营养师会诊个体化调整；患者可通过上方「📱 手机扫码打卡」每日记录执行情况。</p></div></div>'
+        + '</div>';
+    })();
     const sections = sarcPlanSections(pl);
     /* 富集动作库已上传的图片/视频：无则 SchemeCard 媒体块回退小Qoo 占位 */
     try {
@@ -582,10 +682,23 @@
                 <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">${intro}</div>
               </div>
                   <button class="btn btn-outline" id="btn-print-sar">🖨️ 打印 / 导出方案</button>
+                  <button class="btn btn-ghost" id="btn-sarc-checkin">📱 手机扫码打卡</button>
+                  <button class="btn btn-primary" id="btn-sarc-ai-gen">✨ AI 生成方案</button>
             </div>
           </div>
           ${sarcoTraceHtml}
           <div id="sar-plan-body">${planBodyHtml}</div>
+          <div class="card mt-3" id="sar-diet-card"><div class="card-header">
+            <h3 class="card-title"><span class="card-title-icon">🍽️</span>营养方案（个体化膳食建议）</h3></div>
+            <div class="card-body">
+              ${nutritionHtml}
+            </div></div>
+          <div class="card mt-3 no-print" id="sar-ai-card" style="display:none;"><div class="card-header">
+            <h3 class="card-title"><span class="card-title-icon">🤖</span>鹊动小Qoo AI 生成方案</h3></div>
+            <div class="card-body">
+              <div id="sar-ai-plan-host"></div>
+              <div id="sar-ai-nutrition-host" class="sarc-ai-nutrition-host"></div>
+            </div></div>
         </div>
       </div>
     </div>`);
@@ -600,6 +713,11 @@
       Array.prototype.forEach.call(list.querySelectorAll('a'), function (a, i) {
         a.onclick = function () { if (secEls[i]) secEls[i].scrollIntoView({ behavior: 'smooth', block: 'start' }); };
       });
+      const dietLink = document.createElement('a');
+      dietLink.setAttribute('data-sec', 'plsec');
+      dietLink.innerHTML = '<span class="ic">•</span><span class="pl-rail-t">营养方案</span>';
+      dietLink.onclick = function () { var c = U.qs('#sar-diet-card', wrap); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+      list.appendChild(dietLink);
     })();
 
     const printBtn = U.qs('#btn-print-sar', wrap);
@@ -610,6 +728,30 @@
     bindPatientBar(wrap);
     /* 设备处方卡（PlanView.itemCard）视频点击播放：补 PlanView 委派；徒手卡仍由 PlanMediaView 全局处理 */
     if (window.PlanView && PlanView.bindPlay) PlanView.bindPlay(wrap);
+
+    /* 肌少症「智能方案」页：手机扫码打卡 + AI 生成方案 按钮接线（与步骤 8 一致） */
+    const ckBtn = U.qs('#btn-sarc-checkin', wrap);
+    if (ckBtn) ckBtn.onclick = function () {
+      var sarcoRec = null;
+      if (window.SarcShare && typeof SarcShare.snapshot === 'function') sarcoRec = SarcShare.snapshot();
+      if (window.Share && typeof Share.openPlanQRModal === 'function') Share.openPlanQRModal({ scheme: 'sarcopenia', sarcoRec: sarcoRec });
+      else U.toast('分享组件未就绪', 'error');
+    };
+    const aiGen = U.qs('#btn-sarc-ai-gen', wrap);
+    const aiCard = U.qs('#sar-ai-card', wrap);
+    const aiHost = U.qs('#sar-ai-plan-host', wrap);
+    const aiNut = U.qs('#sar-ai-nutrition-host', wrap);
+    if (aiGen) aiGen.onclick = function () {
+      if (aiCard) aiCard.style.display = '';
+      if (aiHost && !aiHost.dataset.aiWired) {
+        aiHost.dataset.aiWired = '1';
+        if (window.AIReason) { try { window.AIReason.aiControls(aiHost, R, {}); } catch (e) { console.warn('[sarcopenia-plan] AI 控件注入失败', e); } }
+        else U.toast('AI 组件未就绪', 'error');
+      }
+      if (aiNut && diet && diet.length) {
+        aiNut.innerHTML = nutritionHtml;
+      }
+    };
     return wrap;
   };
 

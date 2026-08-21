@@ -65,7 +65,7 @@
     btn.dataset.locked = '1';
     btn.disabled = true;
     if (!btn.querySelector('.ai-spin')) {
-      btn.innerHTML = '<span class="ai-spin"></span> ' + (btn.getAttribute('data-loading') || '处理中…');
+      btn.innerHTML = '<span class="ai-spin"></span>';
     }
     var done = function () {
       btn.dataset.locked = '0';
@@ -1107,7 +1107,7 @@
       '</div>' +
       '<div class="ai-chat-foot">' +
         '<textarea id="ai-chat-text" rows="3" placeholder="输入问题，Enter 发送…（Shift+Enter 换行，🎤 可语音输入）"></textarea>' +
-        '<button id="ai-chat-send" type="button" class="ai-send" title="发送" data-loading="发送中…">➤</button>' +
+        '<button id="ai-chat-send" type="button" class="ai-send" title="发送">➤</button>' +
       '</div>' +
       '<div class="ai-rz-handle ai-rz-n" data-rz="n" title="上下拉伸"></div>' +
       '<div class="ai-rz-handle ai-rz-ne" data-rz="ne" title="右上拉伸"></div>' +
