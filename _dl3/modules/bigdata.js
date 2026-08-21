@@ -597,7 +597,6 @@
     const ranged = range === 'all' ? patients : patients.filter(p => p.createdAt && (Date.now() - new Date(p.createdAt).getTime()) <= rangeMs);
     const s = spineCalcStats(ranged);
     const pan = spineBuildPanels(s);
-    const railHtml = spineBuildInsightRail(s, range);
     const controlBarHtml = spineControlBarHTML(range);
 
     /* 准备图表数据 */
@@ -627,7 +626,6 @@
 
     return `
       ${controlBarHtml}
-      ${railHtml}
 
       <div class="bigdata-grid bigdata-grid-spine-kpi">
         ${kpiCardHTML({ key: 'total', label: '总评估人数', value: s.total, trend: `近 7 天 ${s.recent7} 人 / 近 30 天 ${s.recent30} 人`, panel: pan.total, narrative: '全部青少年脊柱评估人数。' })}
@@ -790,22 +788,6 @@
         { label: '未生成方案', value: T - s.planDone }
       ]) + `<div class="bd-drill-note">评估 → 干预方案转化情况，转化越高说明随访越紧密。</div>`
     };
-  }
-
-  function spineBuildInsightRail(s) {
-    const T = s.total || 1;
-    const high = s.riskGroups.high || 0;
-    const mid = s.riskGroups.mid || 0;
-    const summary = `共 ${s.total} 名青少年完成脊柱评估，平均 Cobb 角 ${s.avgCobb}°。${high > 0 ? '其中 ' + high + ' 名需支具/手术评估。' : ''}${s.planDone > 0 ? '已为 ' + s.planDone + ' 名生成个性化干预方案。' : ''}`;
-    const cards = [
-      { icon: '🧒', title: '青少年人群覆盖', val: T, unit: '人', sub: '≤12 岁 / 13-15 / 16-18 / >18 岁四档年龄结构' },
-      { icon: '📐', title: '平均 Cobb 角', val: s.avgCobb, unit: '°', sub: 'Cobb 角 ≥25° 触发支具评估，≥45° 触发手术评估' },
-      { icon: '🚨', title: '高风险人数', val: high, unit: '人', sub: '立即启动支具 / 手术评估流程' },
-      { icon: '🎯', title: '方案转化', val: T ? Math.round(s.planDone / T * 100) : 0, unit: '%', sub: '评估 → 干预方案转化率' }
-    ];
-    return `<div class="bd-insight-rail"><div class="bd-insight-summary">${summary}</div>` +
-      cards.map(c => `<div class="bd-insight-card"><div class="ic">${c.icon}</div><div><div class="bd-insight-card-t">${c.title}</div><div class="bd-insight-card-v">${c.val}<small>${c.unit}</small></div><div class="bd-insight-card-s">${c.sub}</div></div></div>`).join('') +
-      '</div>';
   }
 
   function spineControlBarHTML(range) {
